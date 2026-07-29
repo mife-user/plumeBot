@@ -20,9 +20,12 @@
 |----|------|------|
 | OneBot 连接层 | ZeroBot | Go 生态 OneBot v11 框架 |
 | Agent 引擎 | eino (CloudWeGo) | 字节跳动开源 AI Agent 框架，支持 ChatModelAgent / DeepAgent / Compose |
-| 存储 | SQLite | 零额外服务，嵌入进程 |
-| 向量检索 | 暂不引入 | 先用 SQLite 关键词+时间检索，后续可选 sqlite-vec |
-| 插件 | 内建 + exe 子进程 | exe 通过 stdio JSON 通信 |
+| 存储 | SQLite + turso/sqlite | 纯 Go 驱动，无 cgo |
+| 日志 | uber/zap | 高性能结构化日志 |
+| 配置 | gopkg.in/yaml.v3 | YAML 格式配置文件 |
+| 向量检索 | LLM API embedding（默认关闭） | 可选开启，调 LLM embedding 接口；关闭时走 SQLite 关键词+时间检索 |
+| 插件 | Go plugin(.so) + exe 子进程 | .so 为主方案，exe 为可添加补充 |
+| 测试 | Go 标准库 testing | 零额外依赖 |
 
 **外部依赖清单（除 NapCat 外无任何额外服务）：**
 
@@ -256,8 +259,9 @@ Agent 上下文窗口仅保留消息事件，通知/请求/元事件不污染对
 消息进入
   │
   ├── [1. 日志]         所有消息先落日志，包括后续被拦截的
-  ├── [2. 敏感词过滤]    命中则拦截
-  ├── [3. 限流]          短时间大量消息则降级
+  ├── [2. 限流]          短时间大量消息则降级
+  ├── [3. 敏感词过滤]    命中则拦截
+  ├── [4. 持久化]        写入窗口（内存 ring buffer）+ SQLite messages 表
   │
   ├── 是命令 (/开头)？  → 插件分发 → 回复
   │
@@ -316,3 +320,90 @@ Agent 上下文窗口仅保留消息事件，通知/请求/元事件不污染对
 | [ZeroBot](https://github.com/wdvxdr1123/ZeroBot) | 398 | Go OneBot v11 框架 | OneBot 连接层实现 |
 | [ZeroBot-Plugin](https://github.com/FloatTech/ZeroBot-Plugin) | 2.6k | ZeroBot 插件合集 | 插件参考、OneBot API 使用方式 |
 | [eino](https://github.com/cloudwego/eino) | 12.5k | Go AI Agent 框架 | Agent 构建、Tool 注册、Compose 编排 |
+
+---
+
+## 14. 项目架构
+
+### 14.1 分层
+
+参照 DDD 分层，接口驱动，模块可独立开发与替换。
+
+```
+cmd/                                # 入口，组装依赖注入
+internal/
+  domain/                           # 领域层：纯接口 + 实体，零外部依赖
+    entity/                         #   公共实体 (Message, Event, Profile...)
+    agent.go                        #   Agent 接口
+    memory.go                       #   Memory 接口
+    persona.go                      #   Persona 接口
+    plugin.go                       #   Plugin 接口
+    storage.go                      #   Storage 接口
+    control.go                      #   Control 接口
+  service/                          # 业务编排层，依赖 domain 接口
+    agent/                          #   prompt 组装 → Agent 推理
+    memory/                         #   窗口 + 画像缓存 + 摘要流程
+    persona/                        #   extend 链 + 缓存
+    plugin/                         #   发现、加载、路由
+    control/                        #   触发判断 + 状态规则
+    event/                          #   中间件链 + 分流编排
+  handler/                          # 事件处理入口
+    message.go                      #   消息事件 → event service
+    notice.go                       #   通知事件 → 规则处理
+  infra/                            # 基础设施，实现 domain 接口
+    onebot/                         #   ZeroBot 封装
+    ai/                             #   eino Agent 实现
+    sqlite/                         #   SQLite 存储实现
+    plugin_so/                      #   plugin.Open() 实现
+    plugin_exe/                     #   exec 子进程实现
+pkg/                                # 可复用工具
+plugins/                            # .so 文件目录
+data/                               # SQLite 自动生成
+```
+
+### 14.2 依赖方向
+
+```
+cmd ──→ handler ──→ service ──→ domain (接口)
+                      │
+                      └──→ infra (编译时注入)
+
+infra ──→ domain (实现接口)
+domain 零依赖
+```
+
+上层依赖接口，底层实现接口，模块可独立开发替换。
+
+### 14.3 启动流程
+
+```
+main()
+  ├── 1. load config.yaml
+  ├── 2. infra/sqlite.Init()         → 建表 + 默认人格
+  ├── 3. service/persona.Init()      → 加载 extend 链
+  ├── 4. service/plugin.Discover()   → 扫描 .so 加载
+  ├── 5. service/agent.Init()        → 构建 eino Agent + 注册 Tool
+  ├── 6. handler/message.Init()      → 组装中间件链 + 分流
+  ├── 7. handler/notice.Init()       → 通知规则
+  └── 8. infra/onebot.Run()          → ZeroBot 连接 NapCat，接收事件
+```
+
+### 14.4 消息链路
+
+```
+NapCat → OneBot WS → ZeroBot
+  │
+  ├── middleware: 日志 → 限流 → 敏感词
+  │
+  ├── 持久化: 写入窗口（内存 ring buffer）+ SQLite messages 表
+  │
+  ├── 命令消息 → plugin service → 插件执行 → 回复
+  │
+  └── 普通消息 → control service 判断
+        ├── 不满足 → 忽略
+        └── 满足 →
+              context.Build (人格+画像+摘要+窗口)
+              → agent service → eino 推理 → Tool 调用
+              → 记忆更新 → 状态更新
+              → 回复
+```

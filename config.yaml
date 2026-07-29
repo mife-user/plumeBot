@@ -1,0 +1,9 @@
+bot:
+  name: PlumeBot
+  self_id: ""              # bot 自身 QQ 号
+
+log:
+  level: info              # debug | info | warn | error
+
+control:
+  mode: mention            # mention | auto

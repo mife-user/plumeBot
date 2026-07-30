@@ -25,21 +25,18 @@ func main() {
 		log.Fatalf("加载配置失败: %v", err)
 	}
 
-	// 2. 创建 infra / 内联 stub
+	// 2. 创建 infra / Nop 实现
 	agentInfra := &ai.AgentStub{}
 	storageInfra := &sqlite.StorageStub{}
-	memStub := &memoryStub{}
-	perStub := &personaStub{}
-	ctrlStub := &controlStub{}
 	soPlugin := &plugin_so.PluginSOStub{}
 	exePlugin := &plugin_exe.PluginEXEStub{}
 
 	// 3. 注入 service
 	agentSvc := agent.NewAgentService(agentInfra)
-	memorySvc := memory.NewMemoryService(memStub, storageInfra)
-	personaSvc := persona.NewPersonaService(perStub)
+	memorySvc := memory.NewMemoryService(memory.Nop(), storageInfra)
+	personaSvc := persona.NewPersonaService(persona.Nop())
 	pluginSvc := plugin.NewPluginService(soPlugin, exePlugin)
-	controlSvc := control.NewControlService(ctrlStub)
+	controlSvc := control.NewControlService(control.Nop())
 	eventSvc := event.NewEventService(agentSvc, memorySvc, personaSvc, pluginSvc, controlSvc)
 
 	// 4. 注入 handler

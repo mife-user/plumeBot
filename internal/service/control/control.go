@@ -7,6 +7,23 @@ import (
 	"plumebot/internal/domain/entity"
 )
 
+// ---------------------------------------------------------------------------
+// Nop 实现
+// ---------------------------------------------------------------------------
+
+type nopControl struct{}
+
+var _ domain.Control = (*nopControl)(nil)
+
+func (c *nopControl) ShouldReply(_ context.Context, _ entity.Event) (bool, error) { return false, nil }
+
+// Nop 返回 domain.Control 的无操作实现。
+func Nop() domain.Control { return &nopControl{} }
+
+// ---------------------------------------------------------------------------
+// ControlService
+// ---------------------------------------------------------------------------
+
 // ControlService 负责触发判断与状态规则编排。
 type ControlService struct {
 	control domain.Control

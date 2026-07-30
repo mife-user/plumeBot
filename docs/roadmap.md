@@ -21,16 +21,16 @@
 
 目标：Go DDD 分层工程骨架，可编译，不接入任何外部服务。
 
-| 任务编号 | 任务名 | 内容 | 优先级 | 涉及模块 | 启动条件 | 验收标准 |
-|---|---------|------|:---:|------|------|------|
-| P1-001 | Go module 初始化 | `go mod init plumebot`，创建目录骨架（cmd/、internal/domain/、internal/service/、internal/handler/、internal/infra/、pkg/），写入 .gitignore (Go 标准) | P0 | 根工程 | 无 | `go mod tidy` 无报错；目录结构匹配 AGENTS.md |
-| P1-002 | 配置加载 (pkg/config) | 定义 Config 结构体（NapCatWS、ModelKey、DBPath、Limit、SensitiveWords、PluginDir 等），实现从 config.yaml 加载 | P0 | pkg/config | P1-001 完成 | `go build ./pkg/config/` 通过；加载缺省 config.yaml 不 panic |
-| P1-003 | domain 接口定义 | 定义 domain.Agent、domain.Memory、domain.Persona、domain.Plugin、domain.Storage、domain.Control 六个核心接口，零外部 import | P0 | internal/domain | P1-001 完成 | 每个接口 1-3 个方法签名，仅依赖标准库和 domain/entity；`go build ./internal/domain/` 通过 |
-| P1-004 | domain 实体定义 | 定义 entity.Message、entity.Event、entity.Profile、entity.Persona、entity.GroupConfig 等公共结构体 | P0 | internal/domain/entity | P1-003 完成 | 实体字段对齐架构文档 4、7、9 节；纯 struct 无方法限制 |
-| P1-005 | infra 空壳 | 为每个 domain 接口创建 stub 实现：返回 nil 或 error，放置于 internal/infra/{ai,sqlite,onebot,plugin_so,plugin_exe}/ | P0 | internal/infra | P1-003 完成 | 每个包至少一个文件实现对应接口；`go build ./internal/infra/...` 通过 |
-| P1-006 | service 编排框架 | 创建各 service 包的构造函数，接收 domain 接口依赖并持有；方法体返回 nil 或 error stub | P0 | internal/service | P1-003、P1-005 完成 | 每个 service 构造函数可注入 stub 实现；`go build ./internal/service/...` 通过 |
-| P1-007 | handler 空壳 | 创建 message.go 和 notice.go，持有 service 引用，方法 stub | P0 | internal/handler | P1-006 完成 | `go build ./internal/handler/` 通过 |
-| P1-008 | main.go 组装 | 在 cmd/bot/main.go 中完成：加载配置 → 创建 infra stub → 注入 service → 注入 handler → `select{}` 阻塞（不实际连接任何服务） | P0 | cmd/bot | P1-001～007 全部完成 | `go build ./cmd/bot/` 通过；`go vet ./...` 无警告；可编译出空骨架 |
+| 任务编号 | 任务名 | 内容 | 优先级 | 涉及模块 | 启动条件 | 验收标准 | 状态 |
+|---|---------|------|:---:|------|------|------|:--:|
+| P1-001 | Go module 初始化 | `go mod init plumebot`，创建目录骨架（cmd/、internal/domain/、internal/service/、internal/handler/、internal/infra/、pkg/），写入 .gitignore (Go 标准) | P0 | 根工程 | 无 | `go mod tidy` 无报错；目录结构匹配 AGENTS.md | ✅ |
+| P1-002 | 配置加载 (pkg/config) | 定义 Config 结构体（Bot、Log、Control），使用 viper 从 config.yaml 加载，Go 侧仅兜底默认值 | P0 | pkg/config | P1-001 完成 | `go build ./pkg/config/` 通过；加载 config.yaml 不 panic | ✅ |
+| P1-003 | domain 接口定义 | 定义 domain.Agent、domain.Memory、domain.Persona、domain.Plugin、domain.Storage、domain.Control 六个核心接口，零外部 import | P0 | internal/domain | P1-001 完成 | 每个接口 1-3 个方法签名，仅依赖标准库和 domain/entity；`go build ./internal/domain/` 通过 | ⬜ |
+| P1-004 | domain 实体定义 | 定义 entity.Message、entity.Event、entity.MemberProfile、entity.GroupProfile、entity.Persona 等公共结构体 | P0 | internal/domain/entity | P1-001 完成 | 实体字段对齐架构文档 4、7、9 节；纯 struct 无方法限制 | ✅ |
+| P1-005 | infra 空壳 | 为每个 domain 接口创建 stub 实现：返回 nil 或 error，放置于 internal/infra/{ai,sqlite,onebot,plugin_so,plugin_exe}/ | P0 | internal/infra | P1-003 完成 | 每个包至少一个文件实现对应接口；`go build ./internal/infra/...` 通过 | ⬜ |
+| P1-006 | service 编排框架 | 创建各 service 包的构造函数，接收 domain 接口依赖并持有；方法体返回 nil 或 error stub | P0 | internal/service | P1-003、P1-005 完成 | 每个 service 构造函数可注入 stub 实现；`go build ./internal/service/...` 通过 | ⬜ |
+| P1-007 | handler 空壳 | 创建 message.go 和 notice.go，持有 service 引用，方法 stub | P0 | internal/handler | P1-006 完成 | `go build ./internal/handler/` 通过 | ⬜ |
+| P1-008 | main.go 组装 | 在 cmd/bot/main.go 中完成：加载配置 → 创建 infra stub → 注入 service → 注入 handler → `select{}` 阻塞（不实际连接任何服务） | P0 | cmd/bot | P1-001～007 全部完成 | `go build ./cmd/bot/` 通过；`go vet ./...` 无警告；可编译出空骨架 | ⬜ |
 
 ---
 

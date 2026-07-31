@@ -6,7 +6,47 @@ import (
 	"plumebot/internal/domain/entity"
 )
 
-// Storage 持久化消息。
+// Storage 持久化接口，覆盖全部 8 张业务表。
 type Storage interface {
+	// ── messages ──
 	SaveMessage(ctx context.Context, msg entity.Message) error
+	GetMessages(ctx context.Context, groupID string, limit int, offset int) ([]entity.Message, error)
+
+	// ── group_profile ──
+	UpsertGroupProfile(ctx context.Context, profile entity.GroupProfile) error
+	GetGroupProfile(ctx context.Context, groupID string) (*entity.GroupProfile, error)
+
+	// ── group_jargon ──
+	AddJargon(ctx context.Context, groupID string, jargon string) error
+	ListJargon(ctx context.Context, groupID string) ([]string, error)
+	DeleteJargon(ctx context.Context, groupID string, jargon string) error
+
+	// ── member_profile ──
+	UpsertMemberProfile(ctx context.Context, profile entity.MemberProfile) error
+	GetMemberProfile(ctx context.Context, groupID, userID string) (*entity.MemberProfile, error)
+	ListMemberProfiles(ctx context.Context, groupID string) ([]entity.MemberProfile, error)
+
+	// ── member_facts ──
+	AddMemberFact(ctx context.Context, groupID, userID, fact string) error
+	ListMemberFacts(ctx context.Context, groupID, userID string) ([]string, error)
+	DeleteMemberFact(ctx context.Context, groupID, userID, fact string) error
+
+	// ── persona ──
+	InsertPersona(ctx context.Context, persona entity.Persona) (int64, error)
+	UpdatePersona(ctx context.Context, persona entity.Persona) error
+	GetPersona(ctx context.Context, id int64) (*entity.Persona, error)
+	GetDefaultPersona(ctx context.Context) (*entity.Persona, error) // groupid = 0
+
+	// ── bot_state ──
+	UpsertBotState(ctx context.Context, state entity.BotState) error
+	GetBotState(ctx context.Context, groupID string) (*entity.BotState, error)
+
+	// ── plugin_config ──
+	UpsertPluginConfig(ctx context.Context, config entity.PluginConfig) error
+	GetPluginConfig(ctx context.Context, groupID, pluginName string) (*entity.PluginConfig, error)
+	ListPluginConfigs(ctx context.Context, groupID string) ([]entity.PluginConfig, error)
+	DeletePluginConfig(ctx context.Context, groupID, pluginName string) error
+
+	// Close 关闭数据库连接。
+	Close() error
 }

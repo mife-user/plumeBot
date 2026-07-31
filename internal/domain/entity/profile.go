@@ -2,23 +2,22 @@ package entity
 
 // MemberProfile 表示某个用户在某个群里的个人画像。
 // 按 (GroupID, UserID) 唯一。
+// 事实记忆和兴趣话题通过 member_facts 表查询，不在此处冗余存储。
 type MemberProfile struct {
-	GroupID  string   // 群 ID
-	UserID   string   // 用户 QQ 号
-	Activity float64  // 活跃度统计（0~1）
-	Intimacy float64  // 与 bot 的亲密度（0~1）
-	Facts    []string // 事实性记忆（如"喜欢猫"）
-	Interest []string // 兴趣话题标签
+	GroupID  string  // 群 ID
+	UserID   string  // 用户 QQ 号
+	Activity float64 // 活跃度统计（0~1）
+	Intimacy float64 // 与 bot 的亲密度（0~1）
 }
 
 // GroupProfile 表示一个群的群聊画像，每个群一条。
+// 黑话词典通过 group_jargon 表查询，不在此处冗余存储。
 type GroupProfile struct {
 	GroupID     string   // 群 ID
 	Culture     string   // 群文化特征描述
 	Topics      []string // 主流话题标签
 	ActiveHours string   // 活跃时段描述（如"晚上8-11点"）
 	Rules       []string // 群规摘要
-	Jargon      []string // 群黑话词典
 	Atmosphere  []string // 氛围标签（如"轻松"、"技术向"）
 }
 

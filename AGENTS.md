@@ -1,6 +1,33 @@
 # AGENTS.md
 # PlumeBot — AI 开发执行规范
 
+## 0. 快速参考
+
+| 项 | 值 |
+|----|-----|
+| Go 版本 | 1.26.4 (go.mod: `go 1.26.4`) |
+| 模块名 | `plumebot` |
+| 入口 | `cmd/bot/main.go` |
+| 当前阶段 | 第一阶段：项目骨架（stub 可编译，无外部服务） |
+
+```bash
+# 编译
+go build -o bot.exe ./cmd/bot/
+
+# 全量编译检查
+go build ./...
+
+# 静态分析
+go vet ./...
+
+# 运行（当前仅打印启动日志后阻塞）
+./bot.exe
+```
+
+测试：暂无测试文件（`**/*_test.go` 不存在），标准库 `testing` 留待后续。
+
+---
+
 ## 1. 文档用途
 
 本文件是本仓库中所有 AI 开发任务的长期执行规范。
@@ -77,7 +104,7 @@ PlumeBot
 
 必须使用：
 
-- Go 1.21+；
+- Go 1.21+（当前环境 go 1.26.4）；
 - ZeroBot（OneBot v11 连接层）；
 - eino / CloudWeGo（AI Agent 引擎）；
 - `turso/sqlite`（SQLite 驱动，纯 Go 无 cgo）；
@@ -138,7 +165,8 @@ plumebot/
 │   └── infra/                      # 基础设施，实现 domain 接口
 │       ├── onebot/                 #   ZeroBot 封装
 │       ├── ai/                     #   eino Agent 实现
-│       ├── sqlite/                 #   SQLite 存储实现
+│       ├── sqlite/                 #   SQLite 存储实现 (+ queries.go)
+│       │   └── migrations/        #     版本化 DDL 迁移文件
 │       ├── plugin_so/              #   plugin.Open() 实现
 │       └── plugin_exe/             #   exec 子进程实现
 ├── pkg/                            # 可复用工具
@@ -271,6 +299,12 @@ domain 零依赖
 - domain 接口的具体实现；
 - 封装 ZeroBot、eino、SQLite 等第三方库。
 
+每个 infra 包必须：
+
+- 若包含 SQL 操作：`queries.go` — 所有 DML 语句以包级 `const` 存放，方法体内不内嵌 SQL 字面量。
+
+哨兵错误定义在 `internal/domain/errors.go`，infra 层引用 `domain.ErrXxx` 返回，供上层 service 通过 `errors.Is` 判断，避免上层耦合数据库驱动。
+
 第一阶段 infra 下各包只需空文件或返回错误的 stub，保证编译通过即可。
 
 ### 6.6 pkg/config/
@@ -291,7 +325,9 @@ domain 零依赖
 6. 不提前实现任何业务逻辑。
 7. 不接入任何外部服务（ZeroBot、eino、SQLite 驱动等）。
 8. 不为了"架构完整"创建大量空类和方法，只创建架构文档中明确列出的模块。
-9. 代码保持直接、易读，不引入不必要的抽象层。
+10. 哨兵错误（`domain.ErrNotFound`、`domain.ErrConflict`、`domain.ErrClosed`）定义在 `internal/domain/errors.go`，infra 层引用并返回，service 层通过 `errors.Is` 判断，禁止在 infra 包内自定义哨兵。
+11. infra 包中 SQL DML 语句不得内嵌在方法体内，必须提取到 `queries.go` 作为包级 `const`；DDL 语句存放于 `migrations/*.sql` 通过 `//go:embed` 加载。
+12. 代码保持直接、易读，不引入不必要的抽象层。
 
 ---
 

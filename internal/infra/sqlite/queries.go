@@ -1,0 +1,76 @@
+package sqlite
+
+const (
+	// ── persona seed ──
+
+	sqlCountDefaultPersona = `SELECT COUNT(*) FROM persona WHERE groupid = 0`
+
+	sqlInsertDefaultPersona = `INSERT INTO persona (userid, groupid, extend, traits) VALUES (0, 0, 0, '[]')`
+
+	// ── messages ──
+
+	sqlSaveMessage = `INSERT INTO messages (message_id, group_id, user_id, content, timestamp, message_type)
+ VALUES (?, ?, ?, ?, ?, ?)`
+
+	sqlGetMessages = `SELECT message_id, group_id, user_id, content, timestamp, message_type
+ FROM messages WHERE group_id = ? ORDER BY timestamp DESC LIMIT ? OFFSET ?`
+
+	// ── group_profile ──
+
+	sqlUpsertGroupProfile = `INSERT INTO group_profile (group_id, culture, topics, active_hours, rules, atmosphere)
+ VALUES (?, ?, ?, ?, ?, ?)
+ ON CONFLICT(group_id) DO UPDATE SET
+ culture=excluded.culture, topics=excluded.topics, active_hours=excluded.active_hours,
+ rules=excluded.rules, atmosphere=excluded.atmosphere`
+
+	sqlGetGroupProfile = `SELECT group_id, culture, topics, active_hours, rules, atmosphere
+ FROM group_profile WHERE group_id = ?`
+
+	// ── group_jargon ──
+
+	sqlAddJargon    = `INSERT OR IGNORE INTO group_jargon (group_id, jargon) VALUES (?, ?)`
+	sqlListJargon   = `SELECT jargon FROM group_jargon WHERE group_id = ?`
+	sqlDeleteJargon = `DELETE FROM group_jargon WHERE group_id = ? AND jargon = ?`
+
+	// ── member_profile ──
+
+	sqlUpsertMemberProfile = `INSERT INTO member_profile (group_id, user_id, activity, intimacy)
+ VALUES (?, ?, ?, ?)
+ ON CONFLICT(group_id, user_id) DO UPDATE SET
+ activity=excluded.activity, intimacy=excluded.intimacy`
+
+	sqlGetMemberProfile = `SELECT group_id, user_id, activity, intimacy
+ FROM member_profile WHERE group_id = ? AND user_id = ?`
+
+	sqlListMemberProfiles = `SELECT group_id, user_id, activity, intimacy
+ FROM member_profile WHERE group_id = ?`
+
+	// ── member_facts ──
+
+	sqlAddMemberFact    = `INSERT OR IGNORE INTO member_facts (group_id, user_id, fact) VALUES (?, ?, ?)`
+	sqlListMemberFacts  = `SELECT fact FROM member_facts WHERE group_id = ? AND user_id = ?`
+	sqlDeleteMemberFact = `DELETE FROM member_facts WHERE group_id = ? AND user_id = ? AND fact = ?`
+
+	// ── persona ──
+
+	sqlInsertPersona    = `INSERT INTO persona (userid, groupid, extend, traits) VALUES (?, ?, ?, ?)`
+	sqlUpdatePersona    = `UPDATE persona SET userid=?, groupid=?, extend=?, traits=? WHERE id=?`
+	sqlGetPersona       = `SELECT id, userid, groupid, extend, traits FROM persona WHERE id = ?`
+	sqlGetDefaultPersona = `SELECT id, userid, groupid, extend, traits FROM persona WHERE groupid = 0 LIMIT 1`
+
+	// ── bot_state ──
+
+	sqlUpsertBotState = `INSERT INTO bot_state (group_id, state) VALUES (?, ?)
+ ON CONFLICT(group_id) DO UPDATE SET state=excluded.state`
+
+	sqlGetBotState = `SELECT group_id, state FROM bot_state WHERE group_id = ?`
+
+	// ── plugin_config ──
+
+	sqlUpsertPluginConfig = `INSERT INTO plugin_config (group_id, plugin_name, config) VALUES (?, ?, ?)
+ ON CONFLICT(group_id, plugin_name) DO UPDATE SET config=excluded.config`
+
+	sqlGetPluginConfig    = `SELECT group_id, plugin_name, config FROM plugin_config WHERE group_id = ? AND plugin_name = ?`
+	sqlListPluginConfigs  = `SELECT group_id, plugin_name, config FROM plugin_config WHERE group_id = ?`
+	sqlDeletePluginConfig = `DELETE FROM plugin_config WHERE group_id = ? AND plugin_name = ?`
+)

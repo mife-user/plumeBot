@@ -25,9 +25,13 @@ func main() {
 		log.Fatalf("加载配置失败: %v", err)
 	}
 
-	// 2. 创建 infra / Nop 实现
+	// 2. 创建 infra 实现
 	agentInfra := &ai.AgentStub{}
-	storageInfra := &sqlite.StorageStub{}
+	storageInfra, err := sqlite.Open("data")
+	if err != nil {
+		log.Fatalf("打开 SQLite 失败: %v", err)
+	}
+	defer storageInfra.Close()
 	soPlugin := &plugin_so.PluginSOStub{}
 	exePlugin := &plugin_exe.PluginEXEStub{}
 

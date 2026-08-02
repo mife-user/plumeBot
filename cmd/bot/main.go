@@ -2,8 +2,6 @@
 package main
 
 import (
-	"log"
-
 	"plumebot/internal/handler"
 	"plumebot/internal/infra/ai"
 	"plumebot/internal/infra/plugin_exe"
@@ -16,20 +14,25 @@ import (
 	"plumebot/internal/service/persona"
 	"plumebot/internal/service/plugin"
 	"plumebot/pkg/config"
+	"plumebot/pkg/logger"
 )
 
 func main() {
 	// 1. 加载配置
-	_, err := config.Load("config.yaml")
+	cfg, err := config.Load("config.yaml")
 	if err != nil {
-		log.Fatalf("加载配置失败: %v", err)
+		logger.Fatal("加载配置失败", logger.Err(err))
 	}
+
+	// 初始化日志
+	logger.Init(logger.Config{Level: cfg.Log.Level})
+	defer logger.Sync()
 
 	// 2. 创建 infra 实现
 	agentInfra := &ai.AgentStub{}
 	storageInfra, err := sqlite.Open("data")
 	if err != nil {
-		log.Fatalf("打开 SQLite 失败: %v", err)
+		logger.Fatal("打开 SQLite 失败", logger.Err(err))
 	}
 	defer storageInfra.Close()
 	soPlugin := &plugin_so.PluginSOStub{}
@@ -48,6 +51,11 @@ func main() {
 	_ = handler.NewNoticeHandler(eventSvc)
 
 	// 5. 启动
-	log.Println("PlumeBot 已启动（第一阶段骨架）")
+	logger.Info("PlumeBot 已启动（第一阶段骨架）")
+
+	logger.Info("bot 已启动",
+		logger.S("name", cfg.Bot.Name),
+	)
+
 	select {}
 }

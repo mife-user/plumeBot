@@ -7,10 +7,11 @@ import (
 
 // Config 是应用程序的根配置结构体。
 type Config struct {
-	Bot     BotConfig     `mapstructure:"bot"`
-	Onebot  OnebotConfig  `mapstructure:"onebot"`
-	Log     LogConfig     `mapstructure:"log"`
-	Control ControlConfig `mapstructure:"control"`
+	Bot        BotConfig        `mapstructure:"bot"`
+	Onebot     OnebotConfig     `mapstructure:"onebot"`
+	Log        LogConfig        `mapstructure:"log"`
+	Control    ControlConfig    `mapstructure:"control"`
+	Middleware MiddlewareConfig `mapstructure:"middleware"`
 }
 
 // BotConfig 包含 bot 基础信息。
@@ -33,6 +34,18 @@ type LogConfig struct {
 // ControlConfig 包含触发控制配置。
 type ControlConfig struct {
 	Mode string `mapstructure:"mode"` // mention, auto
+}
+
+// MiddlewareConfig 包含消息管线中间件配置。
+type MiddlewareConfig struct {
+	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
+}
+
+// RateLimitConfig 包含消息限流（令牌桶）配置。
+type RateLimitConfig struct {
+	Rate           float64 `mapstructure:"rate"`               // 令牌补充速率（个/秒）
+	Burst          int     `mapstructure:"burst"`              // 桶容量，允许的突发消息数
+	MaxWaitSeconds int     `mapstructure:"max_wait_seconds"`   // 等待令牌的上限秒数，超时后回复固定消息并丢弃
 }
 
 // Load 从 path 加载 YAML 配置文件，返回解析后的 Config。
@@ -62,6 +75,15 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Control.Mode == "" {
 		cfg.Control.Mode = "mention"
+	}
+	if cfg.Middleware.RateLimit.Rate <= 0 {
+		cfg.Middleware.RateLimit.Rate = 2 // 每群每秒补充 2 个令牌
+	}
+	if cfg.Middleware.RateLimit.Burst <= 0 {
+		cfg.Middleware.RateLimit.Burst = 20 // 桶容量 20，吸收打字突发
+	}
+	if cfg.Middleware.RateLimit.MaxWaitSeconds <= 0 {
+		cfg.Middleware.RateLimit.MaxWaitSeconds = 10
 	}
 
 	return &cfg, nil

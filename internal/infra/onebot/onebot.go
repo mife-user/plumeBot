@@ -4,11 +4,13 @@ package onebot
 
 import (
 	"context"
+	"errors"
 
+	log "github.com/sirupsen/logrus"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/driver"
-	log "github.com/sirupsen/logrus"
 
+	"plumebot/internal/domain"
 	"plumebot/internal/handler"
 	"plumebot/pkg/config"
 	"plumebot/pkg/logger"
@@ -38,25 +40,29 @@ func (c *Client) Run() {
 	}, nil)
 }
 
+// rateLimitedReply 是限流等待超时后回复的固定文案（暂不配置化）。
+const rateLimitedReply = "消息太多了，等会再说吧"
+
 // registerMatchers 注册 ZeroBot 事件匹配器：事件 → domain 实体 → handler。
 func (c *Client) registerMatchers() {
 	zero.OnMessage().Handle(func(ctx *zero.Ctx) {
 		msg, ok := toMessage(ctx.Event)
 		if !ok {
+
 			logger.Warn("忽略不支持的 message 事件",
 				logger.S("post_type", ctx.Event.PostType),
 				logger.S("message_type", ctx.Event.MessageType),
 			)
 			return
 		}
-		logger.Info("收到消息事件",
-			logger.S("message_id", msg.MessageID),
-			logger.S("group_id", msg.GroupID),
-			logger.S("user_id", msg.UserID),
-			logger.S("message_type", msg.MessageType),
-			logger.S("content", msg.Content),
-		)
+		// 消息日志统一由 service/event 日志中间件记录，这里不重复打 Info。
 		if err := c.msg.Handle(context.Background(), msg); err != nil {
+			if errors.Is(err, domain.ErrRateLimited) {
+				// 限流超时：已由中间件记录 warn，回复固定文案后静默返回。
+				// ctx.Send 自动回事件来源（群回群、私聊回私聊），发送失败由 ZeroBot 内部记录。
+				ctx.Send(rateLimitedReply)
+				return
+			}
 			logger.Warn("消息处理失败", logger.Err(err))
 		}
 	})

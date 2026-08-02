@@ -45,7 +45,7 @@ func main() {
 	personaSvc := persona.NewPersonaService(persona.Nop())
 	pluginSvc := plugin.NewPluginService(soPlugin, exePlugin)
 	controlSvc := control.NewControlService(control.Nop())
-	eventSvc := event.NewEventService(agentSvc, memorySvc, personaSvc, pluginSvc, controlSvc)
+	eventSvc := event.NewEventService(agentSvc, memorySvc, personaSvc, pluginSvc, controlSvc, cfg.Middleware)
 
 	// 4. 注入 handler
 	msgHandler := handler.NewMessageHandler(eventSvc)

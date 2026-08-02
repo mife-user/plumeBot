@@ -12,4 +12,8 @@ var (
 
 	// ErrClosed 表示资源已关闭、连接已断开。
 	ErrClosed = errors.New("closed")
+
+	// ErrRateLimited 表示消息在限流中间件等待令牌超时，已被丢弃。
+	// 由连接层识别后回复固定文案，其余层无需处理。
+	ErrRateLimited = errors.New("rate limited")
 )

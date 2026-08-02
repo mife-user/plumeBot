@@ -2,6 +2,10 @@ bot:
   name: PlumeBot
   self_id: ""              # bot 自身 QQ 号
 
+onebot:
+  ws_url: ws://127.0.0.1:3001   # NapCat「WebSocket 服务器」地址（正向 WS）
+  access_token: ""              # NapCat 若设置了访问令牌则填写
+
 log:
   level: info              # debug | info | warn | error
 

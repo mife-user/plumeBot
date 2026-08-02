@@ -8,6 +8,7 @@ import (
 // Config 是应用程序的根配置结构体。
 type Config struct {
 	Bot     BotConfig     `mapstructure:"bot"`
+	Onebot  OnebotConfig  `mapstructure:"onebot"`
 	Log     LogConfig     `mapstructure:"log"`
 	Control ControlConfig `mapstructure:"control"`
 }
@@ -16,6 +17,12 @@ type Config struct {
 type BotConfig struct {
 	Name   string `mapstructure:"name"`
 	SelfID string `mapstructure:"self_id"`
+}
+
+// OnebotConfig 包含 OneBot 连接配置（正向 WebSocket）。
+type OnebotConfig struct {
+	WsURL       string `mapstructure:"ws_url"`       // NapCat WebSocket 服务器地址
+	AccessToken string `mapstructure:"access_token"` // 访问令牌，NapCat 未设置时为空
 }
 
 // LogConfig 包含日志配置。
@@ -46,6 +53,9 @@ func Load(path string) (*Config, error) {
 	// 兜底：config.yaml 可能被删字段或留空，保证关键字段有值
 	if cfg.Bot.Name == "" {
 		cfg.Bot.Name = "PlumeBot"
+	}
+	if cfg.Onebot.WsURL == "" {
+		cfg.Onebot.WsURL = "ws://127.0.0.1:3001"
 	}
 	if cfg.Log.Level == "" {
 		cfg.Log.Level = "info"

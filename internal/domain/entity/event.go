@@ -17,4 +17,5 @@ type Event struct {
 	GroupID   string    // 来源群 ID（非群事件时为空）
 	UserID    string    // 来源用户 QQ 号
 	Timestamp int64     // Unix 时间戳（秒）
+	RawJSON   string    // 原始事件 JSON，供通知规则/插件订阅使用
 }

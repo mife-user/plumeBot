@@ -1,9 +1,10 @@
-// PlumeBot 唯一入口。第一阶段仅完成依赖注入组装，不连接任何外部服务。
+// PlumeBot 唯一入口。第二阶段：接入 ZeroBot 连接 NapCat，接收事件并分发。
 package main
 
 import (
 	"plumebot/internal/handler"
 	"plumebot/internal/infra/ai"
+	"plumebot/internal/infra/onebot"
 	"plumebot/internal/infra/plugin_exe"
 	"plumebot/internal/infra/plugin_so"
 	"plumebot/internal/infra/sqlite"
@@ -47,15 +48,14 @@ func main() {
 	eventSvc := event.NewEventService(agentSvc, memorySvc, personaSvc, pluginSvc, controlSvc)
 
 	// 4. 注入 handler
-	_ = handler.NewMessageHandler(eventSvc)
-	_ = handler.NewNoticeHandler(eventSvc)
+	msgHandler := handler.NewMessageHandler(eventSvc)
+	noticeHandler := handler.NewNoticeHandler(eventSvc)
 
-	// 5. 启动
-	logger.Info("PlumeBot 已启动（第一阶段骨架）")
-
-	logger.Info("bot 已启动",
+	// 5. 启动 onebot 连接（阻塞，ZeroBot 底层自动重连）
+	client := onebot.New(cfg.Onebot, cfg.Log.Level, msgHandler, noticeHandler)
+	logger.Info("PlumeBot 启动，正在连接 NapCat",
 		logger.S("name", cfg.Bot.Name),
+		logger.S("ws_url", cfg.Onebot.WsURL),
 	)
-
-	select {}
+	client.Run()
 }

@@ -23,7 +23,18 @@ type rateLimiter struct {
 	limit map[string]*rate.Limiter
 }
 
+// newRateLimiter 创建限流器。空值/非法值兜底由本包负责：
+// rate<=0 → 2/s、burst<=0 → 20、max_wait<=0 → 10s。
 func newRateLimiter(cfg config.RateLimitConfig) *rateLimiter {
+	if cfg.Rate <= 0 {
+		cfg.Rate = 2
+	}
+	if cfg.Burst <= 0 {
+		cfg.Burst = 20
+	}
+	if cfg.MaxWaitSeconds <= 0 {
+		cfg.MaxWaitSeconds = 10
+	}
 	return &rateLimiter{
 		cfg:   cfg,
 		limit: make(map[string]*rate.Limiter),

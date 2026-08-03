@@ -98,3 +98,25 @@ func TestRateLimiterUpstreamCancelNotRateLimited(t *testing.T) {
 		t.Fatalf("上游取消应返回 context.Canceled，实际: %v", err)
 	}
 }
+
+// 零值配置应回落到本包默认：rate=2、burst=20、max_wait=10。
+func TestRateLimiterZeroConfigFallsBack(t *testing.T) {
+	rl := newRateLimiter(config.RateLimitConfig{})
+	if rl.cfg.Rate != 2 {
+		t.Errorf("Rate 应回落为 2，实际 %v", rl.cfg.Rate)
+	}
+	if rl.cfg.Burst != 20 {
+		t.Errorf("Burst 应回落为 20，实际 %v", rl.cfg.Burst)
+	}
+	if rl.cfg.MaxWaitSeconds != 10 {
+		t.Errorf("MaxWaitSeconds 应回落为 10，实际 %v", rl.cfg.MaxWaitSeconds)
+	}
+}
+
+// 合法配置不应被改写。
+func TestRateLimiterValidConfigPreserved(t *testing.T) {
+	rl := newRateLimiter(config.RateLimitConfig{Rate: 5, Burst: 30, MaxWaitSeconds: 15})
+	if rl.cfg.Rate != 5 || rl.cfg.Burst != 30 || rl.cfg.MaxWaitSeconds != 15 {
+		t.Errorf("合法配置被改写: %+v", rl.cfg)
+	}
+}

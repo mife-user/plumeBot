@@ -53,6 +53,12 @@ func main() {
 
 	// 5. 启动 onebot 连接（阻塞，ZeroBot 底层自动重连）
 	client := onebot.New(cfg.Onebot, cfg.Log.Level, msgHandler, noticeHandler)
+	if cfg.Bot.Name == "" {
+		cfg.Bot.Name = config.DefaultBotName // 展示用兜底
+	}
+	if cfg.Onebot.WsURL == "" {
+		cfg.Onebot.WsURL = config.DefaultWsURL // 与 onebot.New 内部兜底保持一致，保证日志显示真实连接地址
+	}
 	logger.Info("PlumeBot 启动，正在连接 NapCat",
 		logger.S("name", cfg.Bot.Name),
 		logger.S("ws_url", cfg.Onebot.WsURL),

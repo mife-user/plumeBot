@@ -1,0 +1,23 @@
+# PlumeBot 默认配置模板（嵌入二进制）。
+# 当运行目录下不存在 config.yaml 时，由 config.Load 写入此内容作为初始配置。
+# 字段空值/缺省的兜底由各消费包自行处理（logger、onebot、service/event 等）。
+
+bot:
+  name: PlumeBot
+  self_id: ""              # bot 自身 QQ 号
+
+onebot:
+  ws_url: ws://127.0.0.1:3001   # NapCat「WebSocket 服务器」地址（正向 WS）
+  access_token: ""              # NapCat 若设置了访问令牌则填写
+
+log:
+  level: info              # debug | info | warn | error
+
+control:
+  mode: mention            # mention | auto
+
+middleware:
+  rate_limit:
+    rate: 2                # 令牌补充速率（个/秒）
+    burst: 20              # 桶容量，允许的突发消息数
+    max_wait_seconds: 10   # 等待令牌上限（秒），超时后回复固定消息并丢弃

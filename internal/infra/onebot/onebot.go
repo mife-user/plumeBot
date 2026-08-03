@@ -25,7 +25,11 @@ type Client struct {
 
 // New 创建 Client，注入消息/通知事件处理入口。
 // logLevel 用于对齐 ZeroBot 内部 logrus 日志级别（debug|info|warn|error）。
+// 空值兜底由本包负责：ws_url 为空时使用默认 NapCat 地址。
 func New(cfg config.OnebotConfig, logLevel string, msg *handler.MessageHandler, notice *handler.NoticeHandler) *Client {
+	if cfg.WsURL == "" {
+		cfg.WsURL = config.DefaultWsURL
+	}
 	log.SetLevel(parseLogLevel(logLevel))
 	return &Client{cfg: cfg, msg: msg, notice: notice}
 }

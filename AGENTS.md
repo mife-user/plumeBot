@@ -8,7 +8,8 @@
 | Go 版本 | 1.26.4 (go.mod: `go 1.26.4`) |
 | 模块名 | `plumebot` |
 | 入口 | `cmd/bot/main.go` |
-| 当前阶段 | 第一阶段：项目骨架（stub 可编译，无外部服务） |
+| 当前阶段 | 第二阶段：基础设施接入（P2-001~003 完成，P2-004 eino Agent 待做） |
+| 任务台账 | `docs/roadmap.md`（阶段任务表 + 「待办与遗留事项」B-001~B-007） |
 
 ```bash
 # 编译
@@ -20,11 +21,12 @@ go build ./...
 # 静态分析
 go vet ./...
 
-# 运行（当前仅打印启动日志后阻塞）
+# 测试（已有多包单测：service/event、pkg/ahocorasick、pkg/config、infra/onebot）
+go test ./...
+
+# 运行（连接 NapCat，需先配置 config.yaml 的 onebot.ws_url；缺失配置会自动写入默认模板）
 ./bot.exe
 ```
-
-测试：暂无测试文件（`**/*_test.go` 不存在），标准库 `testing` 留待后续。
 
 ---
 
@@ -69,48 +71,46 @@ PlumeBot
 基于 OneBot 协议的 QQ 机器人，对接 NapCat，AI 驱动的赛博群友。
 ```
 
-架构设计详见：`docs/architecture.md`
+架构设计详见：`docs/architecture.md`；任务进度详见：`docs/roadmap.md`。
 
 当前阶段：
 
 ```text
-第一阶段：项目骨架
+第二阶段：基础设施接入
 ```
 
 本阶段目标：
 
 ```text
-建立 Go DDD 分层工程骨架 —— domain 接口定义 + infra 空实现 + service 编排框架，
-可编译、不接入外部服务、不实现业务逻辑。
+ZeroBot 连通 NapCat 可收发消息，SQLite 可读写，eino Agent 可调用 LLM。
+已完成：P2-001 SQLite 存储层、P2-002 ZeroBot 连接层、P2-003 消息中间件链
+（日志 → 限流 → 敏感词过滤，敏感词为 Aho-Corasick 实装）。
+进行中：P2-004 eino Agent 接入。
 ```
 
-禁止提前实现：
+禁止提前实现（第二阶段禁令）：
 
-- ZeroBot 连接与消息收发；
-- eino Agent 推理；
-- SQLite 建表与数据操作；
-- 上下文窗口管理；
-- 群聊画像加载；
+- 上下文窗口管理、画像缓存、压缩摘要、记忆更新 Tool；
 - 人格系统；
 - 插件系统；
-- 记忆更新闭环；
-- 触发控制/状态规则；
-- 中间件链；
-- 任何具体业务逻辑。
+- 触发控制（mention/auto 模式、状态规则）；
+- 完整 Agent 对话闭环（P2-004 完成前，管线末端保持 `tailHandler` stub）。
 
 ---
 
 ## 3. 技术栈
 
-必须使用：
+已使用 / 必须使用：
 
 - Go 1.21+（当前环境 go 1.26.4）；
-- ZeroBot（OneBot v11 连接层）；
-- eino / CloudWeGo（AI Agent 引擎）；
-- `turso/sqlite`（SQLite 驱动，纯 Go 无 cgo）；
-- `uber/zap`（结构化日志）；
-- `github.com/spf13/viper`（配置文件解析）；
-- Go `plugin` 包（插件动态加载）；
+- ZeroBot v1.8.2（OneBot v11 连接层，已接入 NapCat）；
+- `golang.org/x/time/rate`（限流令牌桶，已接入）；
+- `modernc.org/sqlite`（SQLite 驱动，纯 Go 无 cgo，已接入）；
+- `spf13/viper`（配置文件解析）；
+- `uber/zap` + `natefinch/lumberjack`（`pkg/logger` 全局结构化日志）；
+- `sirupsen/logrus`（infra/onebot 内部日志）；
+- eino / CloudWeGo（AI Agent 引擎，P2-004 接入）；
+- Go `plugin` 包（插件动态加载，P4 使用）；
 - Go 标准库 `testing`（测试）。
 
 当前明确不使用：
@@ -127,13 +127,6 @@ PlumeBot
 
 - LLM API embedding（向量检索开关，需用户自行配置 API）。
 
-第一阶段还明确不使用：
-
-- ZeroBot；
-- eino；
-- `turso/sqlite`；
-- Go `plugin` 包。
-
 ---
 
 ## 4. 工程目录
@@ -144,38 +137,47 @@ plumebot/
 │   └── bot/
 │       └── main.go                 # 唯一入口，组装依赖注入
 ├── internal/
-│   ├── domain/                     # 领域层：纯接口 + 实体，零外部依赖
+│   ├── domain/                     # 领域层：纯接口 + 实体 + 哨兵错误，零外部依赖
 │   │   ├── entity/                 #   公共实体（Message, Event, Profile...）
-│   │   ├── agent.go                #   Agent 接口
-│   │   ├── memory.go               #   Memory 接口
-│   │   ├── persona.go              #   Persona 接口
-│   │   ├── plugin.go               #   Plugin 接口
-│   │   ├── storage.go              #   Storage 接口
-│   │   └── control.go              #   Control 接口
+│   │   ├── agent.go                #   Agent 接口（P2-004 由 infra/ai 实现）
+│   │   ├── memory.go               #   Memory 接口（stub）
+│   │   ├── persona.go              #   Persona 接口（stub）
+│   │   ├── plugin.go               #   Plugin 接口（stub）
+│   │   ├── storage.go              #   Storage 接口（P2-001 已实现）
+│   │   ├── control.go              #   Control 接口（stub）
+│   │   └── errors.go               #   哨兵错误 + 参数化错误（SensitiveWordError）
 │   ├── service/                    # 业务编排层，依赖 domain 接口
-│   │   ├── agent/                  #   prompt 组装 → Agent 推理
-│   │   ├── memory/                 #   窗口 + 画像缓存 + 摘要流程
-│   │   ├── persona/                #   extend 链 + 缓存
-│   │   ├── plugin/                 #   发现、加载、路由
-│   │   ├── control/                #   触发判断 + 状态规则
-│   │   └── event/                  #   中间件链 + 分流编排
-│   ├── handler/                    # 事件处理入口
+│   │   ├── event/                  #   中间件链：日志 → 限流 → 敏感词 → tailHandler
+│   │   │   ├── event.go            #     EventService，HandleMessage 走链
+│   │   │   ├── middleware.go       #     Handler/Middleware 类型 + logMiddleware + tailHandler
+│   │   │   ├── ratelimit.go        #     令牌桶限流（按群/私聊按用户）
+│   │   │   ├── sensitive.go        #     敏感词中间件（AC 自动机）
+│   │   │   └── *_test.go           #     核心单测
+│   │   ├── agent/                  #   stub
+│   │   ├── memory/                 #   stub
+│   │   ├── persona/                #   stub
+│   │   ├── plugin/                 #   stub
+│   │   └── control/                #   stub
+│   ├── handler/                    # 事件处理入口（薄胶水，无业务逻辑）
 │   │   ├── message.go              #   消息事件 → event service
-│   │   └── notice.go               #   通知事件 → 规则处理
+│   │   └── notice.go               #   通知事件 → 规则处理（stub）
 │   └── infra/                      # 基础设施，实现 domain 接口
-│       ├── onebot/                 #   ZeroBot 封装
-│       ├── ai/                     #   eino Agent 实现
-│       ├── sqlite/                 #   SQLite 存储实现 (+ queries.go)
+│       ├── onebot/                 #   ZeroBot 封装（已接入：matcher 分发 + 固定文案回复）
+│       ├── ai/                     #   eino Agent 实现（stub，P2-004）
+│       ├── sqlite/                 #   SQLite 存储实现（已接入：P2-001，含 migrations）
 │       │   └── migrations/        #     版本化 DDL 迁移文件
-│       ├── plugin_so/              #   plugin.Open() 实现
-│       └── plugin_exe/             #   exec 子进程实现
+│       ├── plugin_so/              #   plugin.Open() 实现（stub）
+│       └── plugin_exe/             #   exec 子进程实现（stub）
 ├── pkg/                            # 可复用工具
-│   └── config/                     #   配置加载
-├── plugins/                        # .so 文件目录
+│   ├── config/                     #   配置加载（嵌入默认模板 config.default.yaml）
+│   ├── logger/                     #   全局 zap 日志
+│   └── ahocorasick/                #   Aho-Corasick 多模式匹配（敏感词）
+├── plugins/                        # .so 文件目录（运行时）
 ├── data/                           # SQLite 自动生成（运行时创建）
-├── config.yaml                     # 配置文件
+├── config.yaml                     # 配置文件（与嵌入模板手动同步）
 ├── docs/
-│   └── architecture.md             # 架构设计文档
+│   ├── architecture.md             # 架构设计文档
+│   └── roadmap.md                  # 任务台账（阶段表 + 遗留事项 B-001~B-007）
 ├── AGENTS.md                       # 本文件
 ├── README.md
 ├── go.mod
@@ -192,7 +194,7 @@ plumebot/
 
 - 定义所有业务接口；
 - 定义公共实体（Entity）；
-- 零外部依赖（不依赖任何 infra 实现、不依赖第三方库）。
+- 定义哨兵错误（errors.go）。
 
 禁止：
 
@@ -249,6 +251,12 @@ domain 零依赖
 
 上层依赖接口，底层实现接口。编译时通过 main.go 组装依赖关系。
 
+### 5.6 已确立的架构决策
+
+- **中间件链在 service/event**：ZeroBot 无中间件机制（只有 Rule/Matcher/Engine.midHandler），业务管线属编排层，放 service 可单测。
+- **发送能力在 infra/onebot**：ZeroBot 的 `ctx` 只在连接层可见。限流/敏感词命中由 matcher 内 `ctx.Send` 固定文案回复（`rateLimitedReply`/`sensitiveWordReply` 常量）；通用发送接口 `domain.Sender` 见 roadmap B-003（P6 前实现）。
+- **连接层无事件级 context**：onebot 适配层传 `context.Background()`；service Handler 已预留 ctx 参数（B-007，未来仅改 onebot 一处）。
+
 ---
 
 ## 6. 模块说明
@@ -258,32 +266,35 @@ domain 零依赖
 职责：
 
 - 唯一 main 入口；
-- 加载配置；
-- 手动依赖注入（组装 service + infra）；
-- 启动运行。
+- 加载配置（缺失时自动写入嵌入默认模板）；
+- 手动依赖注入（组装 service + infra + handler）；
+- 启动 onebot 客户端并阻塞。
 
 ### 6.2 internal/domain/
 
 职责：
 
 - 全部业务接口定义；
-- 公共实体定义。
+- 公共实体定义；
+- 哨兵错误定义。
 
 禁止：
 
 - 任何外部依赖 import。
 
-### 6.3 internal/service/
+### 6.3 internal/service/event/
 
 职责：
 
-- 各模块的业务流程编排；
-- 持有 domain 接口引用。
+- 消息中间件链编排：`日志 → 限流 → 敏感词 → tailHandler`；
+- `HandleMessage` 走链，`HandleNotice` 暂为 stub。
 
-禁止：
+关键约定：
 
-- import infra 包；
-- 包含数据库、网络等具体实现。
+- `HandleMessage(ctx, msg) error`，中间件命中返回哨兵错误（`domain.ErrRateLimited` / `domain.SensitiveWordError`）；
+- 限流：`golang.org/x/time/rate` 令牌桶，按群（私聊按用户）独立，超时返回 `ErrRateLimited`；
+- 敏感词：`pkg/ahocorasick` 匹配，空词表 = 不过滤；
+- 日志中间件记录 message_id/group_id/user_id/message_type/content，日志不重复（infra/onebot 不再打消息 Info）。
 
 ### 6.4 internal/handler/
 
@@ -297,21 +308,28 @@ domain 零依赖
 职责：
 
 - domain 接口的具体实现；
-- 封装 ZeroBot、eino、SQLite 等第三方库。
+- 封装 ZeroBot、SQLite 等第三方库。
+
+现状：
+
+- `onebot/`：已接入（matcher 注册 + 事件转换 + 固定文案回复）；已实现、有单测。
+- `sqlite/`：已接入（P2-001，8 张表 + migrations）。
+- `ai/`、`plugin_so/`、`plugin_exe/`：stub（返回 nil 或 error），待对应阶段实现。
 
 每个 infra 包必须：
 
-- 若包含 SQL 操作：`queries.go` — 所有 DML 语句以包级 `const` 存放，方法体内不内嵌 SQL 字面量。
+- 若包含 SQL 操作：`queries.go` — 所有 DML 语句以包级 `const` 存放，方法体内不内嵌 SQL 字面量；DDL 语句存放于 `migrations/*.sql` 通过 `//go:embed` 加载。
 
 哨兵错误定义在 `internal/domain/errors.go`，infra 层引用 `domain.ErrXxx` 返回，供上层 service 通过 `errors.Is` 判断，避免上层耦合数据库驱动。
-
-第一阶段 infra 下各包只需空文件或返回错误的 stub，保证编译通过即可。
 
 ### 6.6 pkg/config/
 
 职责：
 
-- 配置文件加载与解析。
+- 配置文件加载与解析；
+- `//go:embed config.default.yaml` 嵌入默认模板：`Load()` 时配置文件不存在则写入模板再加载；
+- **空值兜底由消费方负责**（如限流 rate≤0→2、burst≤0→20、max_wait≤0→10s；WsURL 空→`ws://127.0.0.1:3001`；Bot.Name 空→`PlumeBot`）；config 层不改写字段；
+- 新增配置字段必须**双处同步**：`pkg/config/config.default.yaml` + 根 `config.yaml`（config.go 注释已标明）。
 
 ---
 
@@ -321,13 +339,14 @@ domain 零依赖
 2. service 层不 import infra 包。
 3. 接口在 domain 定义，实现在 infra。
 4. 依赖通过构造函数注入，不使用全局变量。
-5. 第一阶段所有 infra 实现为 stub（返回 nil 或 error），保持可编译。
-6. 不提前实现任何业务逻辑。
-7. 不接入任何外部服务（ZeroBot、eino、SQLite 驱动等）。
+5. 未实现模块保持 stub（返回 nil 或 error），保持可编译。
+6. 不提前实现任何业务逻辑（对照 roadmap 阶段禁令）。
+7. 不接入阶段外外部服务。
 8. 不为了"架构完整"创建大量空类和方法，只创建架构文档中明确列出的模块。
-10. 哨兵错误（`domain.ErrNotFound`、`domain.ErrConflict`、`domain.ErrClosed`）定义在 `internal/domain/errors.go`，infra 层引用并返回，service 层通过 `errors.Is` 判断，禁止在 infra 包内自定义哨兵。
+10. 哨兵错误定义在 `internal/domain/errors.go`：`ErrNotFound`、`ErrConflict`、`ErrClosed`、`ErrRateLimited`、`ErrSensitiveWord`。参数化错误（如 `SensitiveWordError{Word}`）实现 `Unwrap()` 指向哨兵，上层用 `errors.Is` 判断，禁止在 infra 包内自定义哨兵。
 11. infra 包中 SQL DML 语句不得内嵌在方法体内，必须提取到 `queries.go` 作为包级 `const`；DDL 语句存放于 `migrations/*.sql` 通过 `//go:embed` 加载。
 12. 代码保持直接、易读，不引入不必要的抽象层。
+13. 配置空值兜底放在消费方（默认值集中下沉），pkg/config 不改写字段。
 
 ---
 
@@ -341,7 +360,8 @@ domain 零依赖
 
 1. 本文件 `AGENTS.md`；
 2. `docs/architecture.md`；
-3. 已有代码和目录结构。
+3. `docs/roadmap.md`（确认任务编号、状态、遗留事项）；
+4. 已有代码和目录结构。
 
 ### 第二步：确认范围
 
@@ -371,6 +391,7 @@ domain 零依赖
 ```bash
 go build ./...
 go vet ./...
+go test ./...
 ```
 
 如果环境无法执行，必须如实说明实际错误。
@@ -385,7 +406,7 @@ go vet ./...
 - 关键实现说明；
 - 实际执行命令；
 - 编译/测试结果；
-- 未完成事项。
+- 未完成事项（写入 roadmap「待办与遗留事项」）。
 
 完成后停止，不自动进入下一个任务。
 

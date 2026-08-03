@@ -21,3 +21,4 @@ middleware:
     rate: 2                # 令牌补充速率（个/秒）
     burst: 20              # 桶容量，允许的突发消息数
     max_wait_seconds: 10   # 等待令牌上限（秒），超时后回复固定消息并丢弃
+  sensitive_words: []      # 敏感词表；命中后回复「我拒绝回答」并丢弃，空数组 = 不过滤

@@ -57,18 +57,18 @@ func TestChainFixedOrder(t *testing.T) {
 	}
 }
 
-// 敏感词 stub 当前永远放行：消息应到达末端 handler。
-func TestSensitiveWordStubPassesThrough(t *testing.T) {
+// 敏感词中间件空词表应放行（详见 sensitive_test.go 的完整用例）。
+func TestSensitiveWordEmptyPassesThrough(t *testing.T) {
 	reached := false
-	h := sensitiveWordMiddleware(func(ctx context.Context, msg entity.Message) error {
+	h := sensitiveWordMiddleware(newSensitiveWordFilter(nil))(func(ctx context.Context, msg entity.Message) error {
 		reached = true
 		return nil
 	})
 	if err := h(context.Background(), groupMsg("m1")); err != nil {
-		t.Fatalf("stub 应放行: %v", err)
+		t.Fatalf("空词表应放行: %v", err)
 	}
 	if !reached {
-		t.Fatal("敏感词 stub 应把消息传给下一个 handler")
+		t.Fatal("敏感词中间件应把消息传给下一个 handler")
 	}
 }
 

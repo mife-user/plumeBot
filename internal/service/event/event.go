@@ -42,7 +42,7 @@ func NewEventService(
 	mws := []Middleware{
 		logMiddleware,
 		rateLimitMiddleware(newRateLimiter(mwCfg.RateLimit)),
-		sensitiveWordMiddleware,
+		sensitiveWordMiddleware(newSensitiveWordFilter(mwCfg.SensitiveWords)),
 	}
 	s.msgChain = chain(mws, tailHandler)
 	return s

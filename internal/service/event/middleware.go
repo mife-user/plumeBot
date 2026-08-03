@@ -39,14 +39,6 @@ func logMiddleware(next Handler) Handler {
 	}
 }
 
-// sensitiveWordMiddleware 是敏感词过滤占位实现。
-// 当前阶段为 stub：永远放行；后续阶段在此实现「命中拦截 + 记录」。
-func sensitiveWordMiddleware(next Handler) Handler {
-	return func(ctx context.Context, msg entity.Message) error {
-		return next(ctx, msg)
-	}
-}
-
 // tailHandler 是管线的末端处理，当前为 stub。
 // 后续阶段在此接入持久化（P3）、触发控制与命令分发（P5/P6）。
 func tailHandler(_ context.Context, _ entity.Message) error {

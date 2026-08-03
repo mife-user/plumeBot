@@ -55,7 +55,8 @@ type ControlConfig struct {
 
 // MiddlewareConfig 包含消息管线中间件配置。
 type MiddlewareConfig struct {
-	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
+	RateLimit      RateLimitConfig `mapstructure:"rate_limit"`
+	SensitiveWords []string        `mapstructure:"sensitive_words"` // 敏感词表；命中回复「我拒绝回答」，空数组 = 不过滤
 }
 
 // RateLimitConfig 包含消息限流（令牌桶）配置。

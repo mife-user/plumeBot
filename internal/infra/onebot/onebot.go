@@ -45,7 +45,11 @@ func (c *Client) Run() {
 }
 
 // rateLimitedReply 是限流等待超时后回复的固定文案（暂不配置化）。
-const rateLimitedReply = "消息太多了，等会再说吧"
+// sensitiveWordReply 是敏感词命中后回复的固定文案（暂不配置化）。
+const (
+	rateLimitedReply   = "消息太多了，等会再说吧"
+	sensitiveWordReply = "我拒绝回答"
+)
 
 // registerMatchers 注册 ZeroBot 事件匹配器：事件 → domain 实体 → handler。
 func (c *Client) registerMatchers() {
@@ -65,6 +69,11 @@ func (c *Client) registerMatchers() {
 				// 限流超时：已由中间件记录 warn，回复固定文案后静默返回。
 				// ctx.Send 自动回事件来源（群回群、私聊回私聊），发送失败由 ZeroBot 内部记录。
 				ctx.Send(rateLimitedReply)
+				return
+			}
+			if errors.Is(err, domain.ErrSensitiveWord) {
+				// 敏感词命中：已由中间件记录 warn（含命中词），回复固定文案后静默返回。
+				ctx.Send(sensitiveWordReply)
 				return
 			}
 			logger.Warn("消息处理失败", logger.Err(err))

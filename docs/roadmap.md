@@ -38,12 +38,14 @@
 
 目标：ZeroBot 连通 NapCat 可收发消息，eino Agent 可调用 LLM，SQLite 可读写。
 
-| 任务编号 | 任务名 | 内容 | 优先级 | 涉及模块 | 启动条件 | 验收标准 |
-|---|---------|------|:---:|------|------|------|
-| P2-001 | SQLite 存储层 | 实现 domain.Storage 接口：建表（8 张表：messages、group_profile、group_jargon、member_profile、member_facts、persona、bot_state、plugin_config）、CRUD；启动时自动建表 + 插入默认人格 | P0 | infra/sqlite | P1 全部完成 | 可写入/查询 messages；默认人格 groupid=0 自动插入 |
-| P2-002 | ZeroBot 连接层 | 实现 OneBot WebSocket 客户端，连接 NapCat，接收原始事件 → 转为 domain.Event → 交给 handler | P0 | infra/onebot | P1 全部完成 | bot 启动后连上 NapCat，能收到群消息事件并打印日志 |
-| P2-003 | 消息管线中间件 | 实现中间件链（日志 → 限流 → 敏感词过滤），在 event service 中编织 | P0 | service/event | P2-002 完成 | 每条消息有日志输出；限流超限丢弃；敏感词命中拦截且记录 |
-| P2-004 | eino Agent 接入 | 实现 domain.Agent 接口，封装 eino ChatModelAgent，支持 tool calling | P0 | infra/ai | P1 全部完成 | 传入简单 prompt 可收到 LLM 文本回复 |
+| 任务编号 | 任务名 | 内容 | 优先级 | 涉及模块 | 启动条件 | 验收标准 | 状态 |
+|---|---------|------|:---:|------|------|------|:--:|
+| P2-001 | SQLite 存储层 | 实现 domain.Storage 接口：建表（8 张表：messages、group_profile、group_jargon、member_profile、member_facts、persona、bot_state、plugin_config）、CRUD；启动时自动建表 + 插入默认人格 | P0 | infra/sqlite | P1 全部完成 | 可写入/查询 messages；默认人格 groupid=0 自动插入 | ✅ |
+| P2-002 | ZeroBot 连接层 | 实现 OneBot WebSocket 客户端，连接 NapCat，接收原始事件 → 转为 domain.Event → 交给 handler | P0 | infra/onebot | P1 全部完成 | bot 启动后连上 NapCat，能收到群消息事件并打印日志 | ✅ |
+| P2-003 | 消息管线中间件 | 实现中间件链（日志 → 限流 → 敏感词过滤），在 event service 中编织 | P0 | service/event | P2-002 完成 | 每条消息有日志输出；限流超限丢弃；敏感词命中拦截且记录 | ✅ |
+| P2-004 | eino Agent 接入 | 实现 domain.Agent 接口，封装 eino ChatModelAgent，支持 tool calling | P0 | infra/ai | P1 全部完成 | 传入简单 prompt 可收到 LLM 文本回复 | ⬜ |
+
+> 附加交付（P2-003 里程碑内）：敏感词实装为 Aho-Corasick 自动机（`pkg/ahocorasick`，大小写不敏感、返回最早命中词且保留配置原大小写）；敏感词经 `middleware.sensitive_words` 配置；命中返回 `domain.ErrSensitiveWord`（携带命中词），连接层回复「我拒绝回答」。
 
 ---
 
@@ -104,6 +106,22 @@
 - **第三阶段禁**: 人格系统、插件系统、触发模式
 - **第四阶段禁**: 触发模式、完整联调
 - **第五阶段禁**: 端到端压测
+
+---
+
+## 待办与遗留事项
+
+> 各阶段交付中明确暂缓/遗留的事项，防止遗忘。完成一项即删除对应行。
+
+| 编号 | 事项 | 来源 | 处理时机 | 说明 |
+|------|------|------|----------|------|
+| B-001 | eino Agent 接入 | roadmap P2-004 | 下一任务 | 实现 domain.Agent，封装 eino ChatModelAgent，支持 tool calling |
+| B-002 | 连接层测试基建 | P2-002/P2-003 评审遗留 | 连接层测试基建就绪时 | mock ZeroBot Ctx：补 onebot matcher 限流/敏感词回复分支单测；convert.go 纯函数（formatID/toMessage/toEvent）单测 |
+| B-003 | domain.Sender 发送接口 | P2-003 设计讨论 | Agent 回复需要时（P6-002 前） | domain 定义 Sender 接口，infra/onebot 用 CallActionWithContext 实现，main 注入；当前发送仅 onebot 内部 ctx.Send 固定文案 |
+| B-004 | 限流注册表淘汰 | P2-003 实现注释 | 群数量增长后 | ratelimit 的 map[string]*rate.Limiter 只增不删，需按空闲时长淘汰 |
+| B-005 | Control.Mode 空值兜底 | config 重构 | P5-001 接入 control 服务时 | 消费方自理默认值：mode 为空 → "mention"，在 control service 侧兜底（main 目前未接 cfg.Control） |
+| B-006 | 配置模板双份同步 | config 重构 | 新增配置字段时 | pkg/config/config.default.yaml 与根 config.yaml 需手动同步（config.go 注释已标明） |
+| B-007 | 连接级 context 传播 | P2-003 设计讨论 | ZeroBot 支持或自研连接时 | ZeroBot 无事件级 ctx，连接层传 context.Background()；service Handler 已预留 ctx 参数，未来仅需改 onebot 一处 |
 
 ---
 

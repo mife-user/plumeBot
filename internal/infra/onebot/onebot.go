@@ -80,12 +80,15 @@ func (c *Client) registerMatchers() {
 		}
 	})
 
+	// 通知事件（群增减/戳一戳/禁言等）：转换后交给 notice handler，不走消息中间件链。
 	zero.OnNotice().Handle(func(ctx *zero.Ctx) {
 		c.dispatchEvent(ctx)
 	})
+	// 请求事件（好友申请/加群申请）：与通知事件共用分发，当前统一为记录日志 + notice handler stub。
 	zero.OnRequest().Handle(func(ctx *zero.Ctx) {
 		c.dispatchEvent(ctx)
 	})
+	// 元事件（心跳/生命周期）：仅记录 Debug 日志，不进入业务管线。
 	zero.OnMetaEvent().Handle(func(ctx *zero.Ctx) {
 		logger.Debug("收到元事件",
 			logger.S("meta_event_type", ctx.Event.RawEvent.Get("meta_event_type").String()),

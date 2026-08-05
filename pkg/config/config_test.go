@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -59,7 +60,9 @@ func TestLoadExistingFileNoFallback(t *testing.T) {
 	path := writeTempConfig(t,
 		"bot:\n  name: \"\"\n"+
 			"onebot:\n  ws_url: \"\"\n"+
-			"middleware:\n  rate_limit:\n    rate: 0\n    burst: 0\n    max_wait_seconds: 0\n")
+			"middleware:\n  rate_limit:\n    rate: 0\n    burst: 0\n    max_wait_seconds: 0\n"+
+			"llm:\n  provider: \"\"\n  timeout_seconds: 0\n  openai:\n    base_url: \"\"\n    model: \"\"\n    max_tokens: 0\n"+
+			"prompt:\n  system: \"\"\n")
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -80,6 +83,19 @@ func TestLoadExistingFileNoFallback(t *testing.T) {
 	}
 	if got := cfg.Middleware.RateLimit.MaxWaitSeconds; got != 0 {
 		t.Errorf("MaxWaitSeconds 零值不应被改写，实际 %v", got)
+	}
+	// LLM/Tools/Prompt 空值同样不做 Go 侧改写
+	if cfg.LLM.Provider != "" {
+		t.Errorf("LLM.Provider 空值不应被改写，实际 %q", cfg.LLM.Provider)
+	}
+	if cfg.LLM.TimeoutSeconds != 0 {
+		t.Errorf("LLM.TimeoutSeconds 零值不应被改写，实际 %v", cfg.LLM.TimeoutSeconds)
+	}
+	if cfg.LLM.OpenAI.BaseURL != "" || cfg.LLM.OpenAI.Model != "" || cfg.LLM.OpenAI.MaxTokens != 0 {
+		t.Errorf("LLM.OpenAI 空值不应被改写，实际 %+v", cfg.LLM.OpenAI)
+	}
+	if cfg.Prompt.System != "" {
+		t.Errorf("Prompt.System 空值不应被改写，实际 %q", cfg.Prompt.System)
 	}
 }
 
@@ -108,6 +124,111 @@ func TestLoadExistingFilePreservesValues(t *testing.T) {
 	}
 }
 
+// LLM/Tools/Prompt 各字段的合法值解析，temperature 以指针形式保留。
+func TestLoadLLMToolsPromptValues(t *testing.T) {
+	path := writeTempConfig(t,
+		"llm:\n"+
+			"  provider: openai\n"+
+			"  timeout_seconds: 30\n"+
+			"  openai:\n"+
+			"    base_url: https://api.deepseek.com/v1\n"+
+			"    api_key: sk-test-123\n"+
+			"    model: deepseek-chat\n"+
+			"    temperature: 0.7\n"+
+			"    max_tokens: 512\n"+
+			"tools:\n"+
+			"  enabled:\n"+
+			"    - tool_a\n"+
+			"    - tool_b\n"+
+			"prompt:\n"+
+			"  system: 测试人设\n")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("加载配置失败: %v", err)
+	}
+
+	if cfg.LLM.Provider != "openai" {
+		t.Errorf("LLM.Provider = %q，期望 openai", cfg.LLM.Provider)
+	}
+	if cfg.LLM.TimeoutSeconds != 30 {
+		t.Errorf("LLM.TimeoutSeconds = %v，期望 30", cfg.LLM.TimeoutSeconds)
+	}
+	o := cfg.LLM.OpenAI
+	if o.BaseURL != "https://api.deepseek.com/v1" {
+		t.Errorf("OpenAI.BaseURL = %q", o.BaseURL)
+	}
+	if o.APIKey != "sk-test-123" {
+		t.Errorf("OpenAI.APIKey = %q", o.APIKey)
+	}
+	if o.Model != "deepseek-chat" {
+		t.Errorf("OpenAI.Model = %q", o.Model)
+	}
+	if o.Temperature == nil {
+		t.Fatal("Temperature 应为指针（已配置 0.7）")
+	}
+	if *o.Temperature != 0.7 {
+		t.Errorf("Temperature = %v，期望 0.7", *o.Temperature)
+	}
+	if o.MaxTokens != 512 {
+		t.Errorf("OpenAI.MaxTokens = %v，期望 512", o.MaxTokens)
+	}
+	if len(cfg.Tools.Enabled) != 2 || cfg.Tools.Enabled[0] != "tool_a" || cfg.Tools.Enabled[1] != "tool_b" {
+		t.Errorf("Tools.Enabled = %v，期望 [tool_a tool_b]", cfg.Tools.Enabled)
+	}
+	if cfg.Prompt.System != "测试人设" {
+		t.Errorf("Prompt.System = %q，期望 测试人设", cfg.Prompt.System)
+	}
+}
+
+// temperature 缺省时指针应为 nil（消费方据此不传该参数）。
+func TestLoadTemperatureNilWhenAbsent(t *testing.T) {
+	path := writeTempConfig(t,
+		"llm:\n  provider: openai\n  openai:\n    model: some-model\n")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("加载配置失败: %v", err)
+	}
+	if cfg.LLM.OpenAI.Temperature != nil {
+		t.Errorf("Temperature 缺省应为 nil，实际 %v", *cfg.LLM.OpenAI.Temperature)
+	}
+}
+
+// 未知字段（顶层或嵌套）应被忽略，不影响解析。
+func TestLoadUnknownFieldsIgnored(t *testing.T) {
+	path := writeTempConfig(t,
+		"unknown_top: 1\n"+
+			"llm:\n  provider: openai\n  unknown_nested: hello\n")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("未知字段不应导致加载失败: %v", err)
+	}
+	if cfg.LLM.Provider != "openai" {
+		t.Errorf("LLM.Provider = %q，期望 openai", cfg.LLM.Provider)
+	}
+}
+
+// B-006 守卫：根 config.yaml 与嵌入模板解析结果一致（防双份漂移）。
+// 注意：仅比较解析后的内容，不比较注释等格式差异。
+func TestRootConfigYAMLSyncedWithDefault(t *testing.T) {
+	rootPath := filepath.Join("..", "..", "config.yaml")
+	rootCfg, err := Load(rootPath)
+	if err != nil {
+		t.Fatalf("加载根 config.yaml 失败: %v", err)
+	}
+
+	defaultCfg, err := Load(filepath.Join(t.TempDir(), "config.yaml"))
+	if err != nil {
+		t.Fatalf("加载默认模板失败: %v", err)
+	}
+
+	if !reflect.DeepEqual(*rootCfg, *defaultCfg) {
+		t.Errorf("根 config.yaml 与嵌入默认模板不一致（新增配置字段时需双处同步，见 B-006）：\n根配置   = %+v\n默认模板 = %+v", *rootCfg, *defaultCfg)
+	}
+}
+
 // 路径父目录不存在时，写入默认配置应自动创建目录。
 func TestLoadMissingFileCreatesParentDir(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "sub", "nested")
@@ -124,7 +245,7 @@ func TestLoadMissingFileCreatesParentDir(t *testing.T) {
 // 嵌入的默认配置应包含全部配置节（与 Config 结构对应）。
 func TestDefaultYAMLHasAllSections(t *testing.T) {
 	content := string(defaultConfigYAML)
-	for _, section := range []string{"bot:", "onebot:", "log:", "control:", "middleware:", "rate_limit:"} {
+	for _, section := range []string{"bot:", "onebot:", "log:", "control:", "middleware:", "rate_limit:", "llm:", "openai:", "tools:", "prompt:"} {
 		if !strings.Contains(content, section) {
 			t.Errorf("默认配置缺少 %q 节", section)
 		}

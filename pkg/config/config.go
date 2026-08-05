@@ -20,6 +20,13 @@ var defaultConfigYAML []byte
 const (
 	DefaultBotName = "PlumeBot"
 	DefaultWsURL   = "ws://127.0.0.1:3001"
+
+	// LLM 接入默认值（阶段 4 起由 infra/ai 消费，空值/非法值在消费方兜底）。
+	DefaultLLMProvider       = "openai"                // provider 空 → openai
+	DefaultOpenAIBaseURL     = "https://api.openai.com/v1" // base_url 空 → 默认端点
+	DefaultLLMTimeoutSeconds = 60                      // timeout_seconds ≤0 → 60
+	// DefaultSystemPrompt 是机器人系统提示词的占位文案（人设占位，P4 人格系统前使用）。
+	DefaultSystemPrompt = "你是 PlumeBot，一个活跃在 QQ 群聊中的 AI 赛博群友。你语气自然友好，用简体中文回复，内容简洁，贴合聊天语境。"
 )
 
 // Config 是应用程序的根配置结构体。
@@ -29,6 +36,9 @@ type Config struct {
 	Log        LogConfig        `mapstructure:"log"`
 	Control    ControlConfig    `mapstructure:"control"`
 	Middleware MiddlewareConfig `mapstructure:"middleware"`
+	LLM        LLMConfig        `mapstructure:"llm"`
+	Tools      ToolsConfig      `mapstructure:"tools"`
+	Prompt     PromptConfig     `mapstructure:"prompt"`
 }
 
 // BotConfig 包含 bot 基础信息。
@@ -64,6 +74,43 @@ type RateLimitConfig struct {
 	Rate           float64 `mapstructure:"rate"`             // 令牌补充速率（个/秒）
 	Burst          int     `mapstructure:"burst"`            // 桶容量，允许的突发消息数
 	MaxWaitSeconds int     `mapstructure:"max_wait_seconds"` // 等待令牌的上限秒数，超时后回复固定消息并丢弃
+}
+
+// LLMConfig 包含 LLM 接入配置（阶段 4 由 infra/ai 消费）。
+// 空值/非法值不做 Go 侧改写，由消费方按 §阶段 2.3 语义兜底。
+type LLMConfig struct {
+	// Provider 供应商名，本期仅支持 openai（任意 OpenAI 兼容接口）；空 → DefaultLLMProvider。
+	Provider string `mapstructure:"provider"`
+	// TimeoutSeconds 单次 LLM 调用超时（秒）；≤0 → DefaultLLMTimeoutSeconds。
+	TimeoutSeconds int `mapstructure:"timeout_seconds"`
+	// OpenAI OpenAI 兼容接口的端点配置。
+	OpenAI OpenAICompatConfig `mapstructure:"openai"`
+}
+
+// OpenAICompatConfig 是 OpenAI 兼容接口的端点配置。
+type OpenAICompatConfig struct {
+	// BaseURL 兼容端点（如 https://api.deepseek.com/v1）；空 → DefaultOpenAIBaseURL。
+	BaseURL string `mapstructure:"base_url"`
+	// APIKey 密钥；本地模型（如 Ollama）可留空，透传不设。
+	APIKey string `mapstructure:"api_key"`
+	// Model 模型名；空 → 构造期报错（不可猜测，禁止兜底）。
+	Model string `mapstructure:"model"`
+	// Temperature 采样温度；nil → 不传该参数（使用模型默认）。
+	Temperature *float64 `mapstructure:"temperature"`
+	// MaxTokens 最大输出 token 数；≤0 → 不传该参数。
+	MaxTokens int `mapstructure:"max_tokens"`
+}
+
+// ToolsConfig 包含工具（function calling）配置。
+type ToolsConfig struct {
+	// Enabled 启用的工具名列表；空 = 不注册任何工具（仅机制，P3-004 起注册具体工具）。
+	Enabled []string `mapstructure:"enabled"`
+}
+
+// PromptConfig 包含提示词配置。
+type PromptConfig struct {
+	// System 机器人系统提示词（人设占位文案）；空 → DefaultSystemPrompt。
+	System string `mapstructure:"system"`
 }
 
 // Load 从 path 加载 YAML 配置文件。

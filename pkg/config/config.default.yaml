@@ -1,6 +1,6 @@
 # PlumeBot 默认配置模板（嵌入二进制）。
 # 当运行目录下不存在 config.yaml 时，由 config.Load 写入此内容作为初始配置。
-# 字段空值/缺省的兜底由各消费包自行处理（logger、onebot、service/event 等）。
+# 字段空值/缺省的兜底由各消费包自行处理（logger、onebot、service/event、infra/ai 等）。
 
 bot:
   name: PlumeBot
@@ -22,3 +22,19 @@ middleware:
     burst: 20              # 桶容量，允许的突发消息数
     max_wait_seconds: 10   # 等待令牌上限（秒），超时后回复固定消息并丢弃
   sensitive_words: []      # 敏感词表；命中后回复「我拒绝回答」并丢弃，空数组 = 不过滤
+
+llm:
+  provider: openai              # 供应商：openai（OpenAI 兼容接口）；空 → openai
+  timeout_seconds: 60           # 单次 LLM 调用超时（秒）；≤0 → 60
+  openai:
+    base_url: https://api.deepseek.com/v1   # OpenAI 兼容端点；空 → https://api.openai.com/v1
+    api_key: ""                # API Key；本地模型（如 Ollama）可留空
+    model: deepseek-chat       # 模型名；空 → 启动报错（不可猜测）
+    # temperature: 0.7         # 采样温度；缺省 → 不传（使用模型默认）
+    max_tokens: 0              # 最大输出 token 数；≤0 → 不传
+
+tools:
+  enabled: []                  # 启用的工具名列表；空 = 不注册任何工具
+
+prompt:
+  system: "你是 PlumeBot，一个活跃在 QQ 群聊中的 AI 赛博群友。你语气自然友好，用简体中文回复，内容简洁，贴合聊天语境。"

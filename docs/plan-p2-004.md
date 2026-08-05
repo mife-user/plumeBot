@@ -1,6 +1,6 @@
 # P2-004 eino Agent 接入 — 实施计划
 
-> 状态：**已评审**（决策已确认，待实施）
+> 状态：**实施中**（阶段 1~4 已完成并全绿，待阶段 5 main 接入收尾）
 > 关联任务：roadmap P2-004 / B-001
 > 依据文档：docs/architecture.md（§2 技术选型、§6 Prompt 组装顺序、§14 分层与启动流程）、AGENTS.md
 > 调研基准：eino v0.8.13 / eino-ext components/model/openai v0.1.13（源码级核实，2026-08）
@@ -220,7 +220,7 @@ func NewChatModel(ctx context.Context, config *ChatModelConfig) (*ChatModel, err
 
 | 步骤 | 内容 |
 |---|---|
-| 4.1 | `provider.go` 注册中心：`type Factory func(ctx, cfg config.LLMConfig) (domain.Agent, error)`；`Register(name, f)`；`NewAgent(ctx, cfg)` 按 Provider 分发，未知 provider 返回明确错误（含已注册列表）。注册 `openai`：`openai.NewChatModel`（映射 BaseURL/APIKey/Model/Temperature/MaxTokens/Timeout，`*float64 → *float32`，空值按 §阶段 2 兜底）→ 包装为 EinoAgent |
+| 4.1 | `provider.go` 注册中心：`type Factory func(ctx, cfg config.Config) (domain.Agent, error)`；`Register(name, f)`；`NewAgent(ctx, cfg)` 按 Provider 分发，未知 provider 返回明确错误（含已注册列表）。注册 `openai`：`openai.NewChatModel`（映射 BaseURL/APIKey/Model/Temperature/MaxTokens/Timeout，`*float64 → *float32`，空值按 §阶段 2 兜底）→ 包装为 EinoAgent。<br>**⚠ 已确认偏差（用户拍板）**：① Registry 为注入式实例（`NewRegistry()`，非包级全局单例），依赖经 main 组装注入；② Factory 接收**完整 `config.Config`**（非仅 LLMConfig），工具启用列表在 Tools 段、LLM 配置在 LLM 段，二者组装点即工厂；③ 工具表经 `NewOpenAIFactory(tr *ToolsRegistry)` 闭包注入（Factory 签名固定，tools 解析依赖用闭包捕获） |
 | 4.2 | `convert.go` 纯函数：`ToSchema([]entity.ChatMessage) []*schema.Message`——text → `{Type: Text, Text}`；image → `{Type: ImageURL, Image: {URL 或 Base64Data, MIMEType, Detail: auto}}`；audio/video/file 同构；空 Parts 跳过；未知 Type 报错。<br>`FromSchema(*schema.Message) string`——取最终文本 Content（tool 循环后为最终 assistant 消息；空则返回空串，P6 再议） |
 | 4.3 | `agent.go`：EinoAgent 实现 domain.Agent——构造 `adk.NewChatModelAgent`（Instruction 留空，消息列表已含 system；ToolsConfig 注入启用工具；MaxIterations 兜底，默认 20）；Generate = ToSchema → `agent.Run` 事件迭代 → FromSchema；错误透传（含超时、循环超限） |
 | 4.4 | `tools.go` 工具机制：内置注册表 `map[string]tool.BaseTool`（本期空）；`RegisterTool(name, t)`（供 P3-004/P4-001）；`EnabledTools(enabled []string) []tool.BaseTool`——按 cfg.Tools.Enabled 过滤，enabled 含未注册名 → 构造期报错；执行形态为 `toolutils.NewTool(desc, fn)` 包装 |

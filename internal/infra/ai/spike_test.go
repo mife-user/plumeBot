@@ -7,7 +7,8 @@ package ai
 //  4. eino-ext openai 构造（不发网络）
 //  5. 真实 LLM 冒烟（env 门控，可选）
 //
-// spike 验证后，本文件内容将沉淀为阶段 4 的正式单测与 convert.go 实现。
+// spike 结论已沉淀为阶段 4 正式实现（convert.go/tools.go/agent.go/provider.go）；
+// 本文件保留：fakeChatModel/runSpikeAgent 助手被正式单测复用，LiveLLM 冒烟保留（env 门控）。
 
 import (
 	"context"
@@ -19,10 +20,10 @@ import (
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/components/tool"
 	toolutils "github.com/cloudwego/eino/components/tool/utils"
+	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
 )
 

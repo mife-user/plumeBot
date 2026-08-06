@@ -80,11 +80,3 @@ func (e *EinoAgent) Generate(ctx context.Context, msgs []entity.ChatMessage) (st
 	}
 	return FromSchema(last), nil
 }
-
-// AgentStub 是 domain.Agent 的空壳实现，main 仍在使用；阶段 5 切换到 EinoAgent 后删除。
-type AgentStub struct{}
-
-// Generate 返回空响应，无错误。
-func (s *AgentStub) Generate(_ context.Context, _ []entity.ChatMessage) (string, error) {
-	return "", nil
-}

@@ -47,8 +47,8 @@ func TestEinoAgentTextRoundtrip(t *testing.T) {
 	if in[0].Role != schema.System || in[1].Role != schema.User {
 		t.Errorf("角色不符: %q / %q", in[0].Role, in[1].Role)
 	}
-	if in[1].UserInputMultiContent[0].Text != "你好" {
-		t.Errorf("用户文本未透传: %+v", in[1].UserInputMultiContent)
+	if in[0].Content != "你是 PlumeBot。" || in[1].Content != "你好" {
+		t.Errorf("文本未透传: system=%q user=%q", in[0].Content, in[1].Content)
 	}
 }
 

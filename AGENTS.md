@@ -8,7 +8,7 @@
 | Go 版本 | 1.26.4 (go.mod: `go 1.26.4`) |
 | 模块名 | `plumebot` |
 | 入口 | `cmd/bot/main.go` |
-| 当前阶段 | 第二阶段：基础设施接入（P2-001~003 完成，P2-004 eino Agent 待做） |
+| 当前阶段 | 第二阶段：基础设施接入（P2-001~004 全部完成） |
 | 任务台账 | `docs/roadmap.md`（阶段任务表 + 「待办与遗留事项」B-001~B-007） |
 
 ```bash
@@ -84,8 +84,10 @@ PlumeBot
 ```text
 ZeroBot 连通 NapCat 可收发消息，SQLite 可读写，eino Agent 可调用 LLM。
 已完成：P2-001 SQLite 存储层、P2-002 ZeroBot 连接层、P2-003 消息中间件链
-（日志 → 限流 → 敏感词过滤，敏感词为 Aho-Corasick 实装）。
-进行中：P2-004 eino Agent 接入。
+（日志 → 限流 → 敏感词过滤，敏感词为 Aho-Corasick 实装）、
+P2-004 eino Agent 接入（eino v0.8.13 + eino-ext openai，多模态消息、tool 机制、
+provider 注册中心；真实 LLM 冒烟见 internal/infra/ai/spike_test.go 的 TestSpikeLiveLLM，
+PLUMEBOT_TEST_LLM=1 门控）。
 ```
 
 禁止提前实现（第二阶段禁令）：
@@ -94,7 +96,7 @@ ZeroBot 连通 NapCat 可收发消息，SQLite 可读写，eino Agent 可调用 
 - 人格系统；
 - 插件系统；
 - 触发控制（mention/auto 模式、状态规则）；
-- 完整 Agent 对话闭环（P2-004 完成前，管线末端保持 `tailHandler` stub）。
+- 完整 Agent 对话闭环（群聊回复闭环属 P6-002；当前管线末端保持 `tailHandler` stub，Agent 能力由 eino 直调验证）
 
 ---
 
@@ -163,7 +165,7 @@ plumebot/
 │   │   └── notice.go               #   通知事件 → 规则处理（stub）
 │   └── infra/                      # 基础设施，实现 domain 接口
 │       ├── onebot/                 #   ZeroBot 封装（已接入：matcher 分发 + 固定文案回复）
-│       ├── ai/                     #   eino Agent 实现（stub，P2-004）
+│       ├── ai/                     #   eino Agent 实现（P2-004 已实装：provider 注册中心 + 多模态转换 + tool 机制）
 │       ├── sqlite/                 #   SQLite 存储实现（已接入：P2-001，含 migrations）
 │       │   └── migrations/        #     版本化 DDL 迁移文件
 │       ├── plugin_so/              #   plugin.Open() 实现（stub）
@@ -314,7 +316,8 @@ domain 零依赖
 
 - `onebot/`：已接入（matcher 注册 + 事件转换 + 固定文案回复）；已实现、有单测。
 - `sqlite/`：已接入（P2-001，8 张表 + migrations）。
-- `ai/`、`plugin_so/`、`plugin_exe/`：stub（返回 nil 或 error），待对应阶段实现。
+- `ai/`：已接入（P2-004：Registry provider 注册中心 + openai 兼容工厂 + EinoAgent + 多模态转换，正式单测全绿）。
+- `plugin_so/`、`plugin_exe/`：stub（返回 nil 或 error），待对应阶段实现。
 
 每个 infra 包必须：
 

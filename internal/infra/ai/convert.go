@@ -9,8 +9,14 @@ import (
 )
 
 // ToSchema 将业务消息列表转换为 eino schema.Message 列表。
-// 规则：空 Parts 的消息整体跳过；part 的 URL/Base64 必须二选一（同时为空或同时设置都报错）；
-// 未知 Role / PartType 报错（错误信息带消息序号与 part 序号定位）。
+// 规则：
+//   - 空 Parts 的消息整体跳过；
+//   - 单文本 part → 走 Message.Content（兼容任何角色；eino-ext 的
+//     UserInputMultiContent 仅允许 user/tool 角色，纯文本走 Content 是标准用法）；
+//   - 多 part 或含非文本 part → 走 UserInputMultiContent，且仅允许 user 角色
+//     （eino-ext openai 转换器限制，system/assistant 带图片会被模型侧拒绝）；
+//   - part 的 URL/Base64 必须二选一（同时为空或同时设置都报错）；
+//   - 未知 Role / PartType 报错（错误信息带消息序号与 part 序号定位）。
 func ToSchema(msgs []entity.ChatMessage) ([]*schema.Message, error) {
 	out := make([]*schema.Message, 0, len(msgs))
 	for i, m := range msgs {
@@ -22,6 +28,16 @@ func ToSchema(msgs []entity.ChatMessage) ([]*schema.Message, error) {
 			return nil, fmt.Errorf("消息 %d: %w", i, err)
 		}
 
+		// 单文本 part：走 Content（纯文本消息，任何角色皆可）。
+		if len(m.Parts) == 1 && m.Parts[0].Type == entity.PartTypeText {
+			out = append(out, &schema.Message{Role: role, Content: m.Parts[0].Text})
+			continue
+		}
+
+		// 多模态：UserInputMultiContent 仅支持 user 角色（eino-ext openai 转换器限制）。
+		if m.Role != entity.RoleUser {
+			return nil, fmt.Errorf("消息 %d: 非文本 part 仅支持 user 角色，当前 %q", i, m.Role)
+		}
 		parts := make([]schema.MessageInputPart, 0, len(m.Parts))
 		for j, p := range m.Parts {
 			part, err := partToSchema(p)

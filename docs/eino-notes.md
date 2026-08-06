@@ -158,6 +158,11 @@ m, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
 | openai.NewChatModel 构造（无网络） | PASS |
 | 真实 LLM（`PLUMEBOT_TEST_LLM=1` 门控，需配置环境变量） | SKIP（可选） |
 
+## 8.5 实战补充（阶段 5 端到端发现）
+
+- **`UserInputMultiContent` 有角色限制**：eino-ext openai 转换器仅允许 user/tool 角色携带多模态内容，system 消息带 `UserInputMultiContent` 会报 `user input multi content only support user&tool role`。因此纯文本消息一律走 `Message.Content`（任何角色皆可），多模态（含图片等）才走 `UserInputMultiContent` 且限定 user 角色——`convert.go` 已按此实现（含非文本 part 非 user 角色时显式报错）。
+- 真实 LLM 端到端命令：`PLUMEBOT_TEST_LLM=1 go test ./internal/infra/ai/ -run TestSpikeLiveLLM -v`（读根 config.yaml 真实配置，全链路：Registry → openai 工厂 → EinoAgent）。
+
 ## 9. 参考 URL
 
 - eino 仓库：https://github.com/cloudwego/eino （tag v0.8.13）

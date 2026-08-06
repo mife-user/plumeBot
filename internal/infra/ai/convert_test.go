@@ -31,10 +31,15 @@ func TestToSchemaText(t *testing.T) {
 	if got[0].Role != schema.System || got[1].Role != schema.User {
 		t.Errorf("角色映射错误: %q / %q", got[0].Role, got[1].Role)
 	}
-	if len(got[0].UserInputMultiContent) != 1 ||
-		got[0].UserInputMultiContent[0].Type != schema.ChatMessagePartTypeText ||
-		got[0].UserInputMultiContent[0].Text != "你是 PlumeBot。" {
-		t.Errorf("system 消息 part = %+v", got[0].UserInputMultiContent)
+	// 单文本 part 走 Content（UserInputMultiContent 仅限 user/tool 角色，eino-ext 转换器限制）
+	if got[0].Content != "你是 PlumeBot。" {
+		t.Errorf("system 消息 Content = %q，期望透传文本", got[0].Content)
+	}
+	if got[1].Content != "你好" {
+		t.Errorf("user 消息 Content = %q，期望透传文本", got[1].Content)
+	}
+	if len(got[0].UserInputMultiContent) != 0 || len(got[1].UserInputMultiContent) != 0 {
+		t.Errorf("纯文本消息不应携带 UserInputMultiContent: %+v", got)
 	}
 }
 
@@ -189,6 +194,13 @@ func TestToSchemaErrors(t *testing.T) {
 			name:    "未知 Role",
 			msg:     entity.ChatMessage{Role: entity.Role("boss"), Parts: []entity.ContentPart{textPart("hi")}},
 			wantSub: "未知角色",
+		},
+		{
+			name: "非文本 part 非 user 角色",
+			msg: entity.ChatMessage{Role: entity.RoleSystem, Parts: []entity.ContentPart{
+				{Type: entity.PartTypeImage, URL: "https://a.com/1.png"},
+			}},
+			wantSub: "非文本 part 仅支持 user 角色",
 		},
 	}
 

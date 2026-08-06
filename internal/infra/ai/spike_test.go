@@ -14,9 +14,9 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/adk"
@@ -25,6 +25,9 @@ import (
 	toolutils "github.com/cloudwego/eino/components/tool/utils"
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
+
+	"plumebot/internal/domain/entity"
+	"plumebot/pkg/config"
 )
 
 // fakeChatModel 是脚本化 ChatModel 实现：每次 Generate 按顺序返回脚本中的消息。
@@ -223,45 +226,65 @@ func TestSpikeOpenAIConstruct(t *testing.T) {
 	}
 }
 
-// TestSpikeLiveLLM：真实 LLM 冒烟（可选）。设置 PLUMEBOT_TEST_LLM=1 时执行。
+// TestSpikeLiveLLM：真实 LLM 端到端冒烟（可选）。设置 PLUMEBOT_TEST_LLM=1 时执行。
+// 走完整生产链路：config.Load（根 config.yaml，含用户真实 api_key）→ Registry →
+// NewOpenAIFactory → NewEinoAgent → Generate（entity.ChatMessage 业务消息）。
+// 配置覆盖：PLUMEBOT_TEST_LLM_{CONFIG,BASE_URL,API_KEY,MODEL,IMAGE_URL}（可选）。
+// 注意：本测试只打印 LLM 回复文本，不打印 api_key。
 func TestSpikeLiveLLM(t *testing.T) {
 	if os.Getenv("PLUMEBOT_TEST_LLM") != "1" {
 		t.Skip("PLUMEBOT_TEST_LLM=1 时执行真实 LLM 冒烟")
 	}
-	modelName := os.Getenv("PLUMEBOT_TEST_LLM_MODEL")
-	if modelName == "" {
-		t.Fatal("PLUMEBOT_TEST_LLM_MODEL 必填")
+
+	// 配置源：默认根 config.yaml，可用环境变量覆盖敏感/易变字段。
+	cfgPath := os.Getenv("PLUMEBOT_TEST_LLM_CONFIG")
+	if cfgPath == "" {
+		cfgPath = filepath.Join("..", "..", "..", "config.yaml")
 	}
-	m, err := openai.NewChatModel(context.Background(), &openai.ChatModelConfig{
-		BaseURL: os.Getenv("PLUMEBOT_TEST_LLM_BASE_URL"),
-		APIKey:  os.Getenv("PLUMEBOT_TEST_LLM_API_KEY"),
-		Model:   modelName,
-		Timeout: 60 * time.Second,
-	})
+	cfg, err := config.Load(cfgPath)
 	if err != nil {
-		t.Fatalf("openai.NewChatModel 失败: %v", err)
+		t.Fatalf("加载配置失败: %v", err)
+	}
+	if v := os.Getenv("PLUMEBOT_TEST_LLM_BASE_URL"); v != "" {
+		cfg.LLM.OpenAI.BaseURL = v
+	}
+	if v := os.Getenv("PLUMEBOT_TEST_LLM_API_KEY"); v != "" {
+		cfg.LLM.OpenAI.APIKey = v
+	}
+	if v := os.Getenv("PLUMEBOT_TEST_LLM_MODEL"); v != "" {
+		cfg.LLM.OpenAI.Model = v
+	}
+	if cfg.LLM.OpenAI.Model == "" {
+		t.Fatal("未配置模型：config.yaml 的 llm.openai.model 或环境变量 PLUMEBOT_TEST_LLM_MODEL")
 	}
 
-	msgs := []*schema.Message{
-		schema.SystemMessage("你是 PlumeBot，一个赛博群友。"),
-		schema.UserMessage("你好，用一句话介绍你自己。"),
+	// 生产链路组装（与 cmd/bot/main.go 一致）
+	reg := NewRegistry()
+	if err := reg.Register(config.DefaultLLMProvider, NewOpenAIFactory(NewToolsRegistry())); err != nil {
+		t.Fatalf("注册 provider 失败: %v", err)
+	}
+	agentInfra, err := reg.NewAgent(context.Background(), *cfg)
+	if err != nil {
+		t.Fatalf("组装 Agent 失败: %v", err)
+	}
+
+	msgs := []entity.ChatMessage{
+		{Role: entity.RoleSystem, Parts: []entity.ContentPart{{Type: entity.PartTypeText, Text: "你是 PlumeBot，一个赛博群友。"}}},
+		{Role: entity.RoleUser, Parts: []entity.ContentPart{{Type: entity.PartTypeText, Text: "你好，用一句话介绍你自己。"}}},
 	}
 	if imgURL := os.Getenv("PLUMEBOT_TEST_LLM_IMAGE_URL"); imgURL != "" {
-		msgs = append(msgs, &schema.Message{Role: schema.User, UserInputMultiContent: []schema.MessageInputPart{
-			{Type: schema.ChatMessagePartTypeText, Text: "这张图里有什么？"},
-			{Type: schema.ChatMessagePartTypeImageURL, Image: &schema.MessageInputImage{
-				MessagePartCommon: schema.MessagePartCommon{URL: &imgURL},
-				Detail:            schema.ImageURLDetailAuto,
-			}},
+		msgs = append(msgs, entity.ChatMessage{Role: entity.RoleUser, Parts: []entity.ContentPart{
+			{Type: entity.PartTypeText, Text: "这张图里有什么？"},
+			{Type: entity.PartTypeImage, URL: imgURL},
 		}})
 	}
 
-	got, err := runSpikeAgent(t, &adk.ChatModelAgentConfig{Model: m}, msgs...)
+	got, err := agentInfra.Generate(context.Background(), msgs)
 	if err != nil {
 		t.Fatalf("真实 LLM 调用失败: %v", err)
 	}
-	if got.Content == "" {
+	if got == "" {
 		t.Fatal("真实 LLM 返回空文本")
 	}
-	t.Logf("LLM 回复: %s", got.Content)
+	t.Logf("LLM 回复: %s", got)
 }

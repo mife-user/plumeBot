@@ -143,7 +143,7 @@ func NewChatModel(ctx context.Context, config *ChatModelConfig) (*ChatModel, err
 1. **模板不替代 memory**：memory 的核心职责是数据生命周期——窗口滚动（20→100 轮）、画像按需加载/延迟淘汰、压缩触发与摘要 FIFO 融合。这些是模板（纯渲染函数）无法承载的。模板即使消费历史数据，也只是 memory 数据的一个**只读视图**。若想用模板"省掉"memory 而每次全量查 SQLite 渲染，就丢掉了 P3 的全部设计。
 2. **memory 存结构化数据，不做渲染**：窗口存 `entity.ChatMessage`，渲染发生在组装层。同一份窗口数据未来要喂给三种消费（对话 prompt、摘要压缩 prompt、检索），一个数据源 + 多个渲染目标 ⇒ 渲染必须在外部。
 3. **对话 prompt 组装放 service/agent**（对齐架构 §6 五段顺序、§14.4 的 context.Build 职责）：用 Go 原生拼接，**不引入 eino ChatTemplate**——eino 模板类型是 infra 依赖，service 层不能 import（分层规则 5.2）；把组装逻辑塞进 infra 又违反"业务编排在 service"（规则 5.3）。eino 的 `StateModifier/ChatTemplate` 记为"已知但不用"，机制最小化。
-4. **人格不进 agent 层**：`domain.Agent.Generate` 收**完整消息列表（含 system role）**，人格文本由 service/agent 在组装时从 persona service 获取（P4-001 后）；P2-004 用配置 `prompt.system` 静态占位。infra 构造参数不绑 SystemPrompt，保证 P4 人格动态化时 **infra 零改动**。人格的"更新"（update_persona tool）与"注入"（system 内容）是两条路：注入走 service 组装，更新走 P4 的 tool 机制。
+4. **人格不进 agent 层**：`domain.Agent.Generate` 收**完整消息列表（含 system role）**，人格文本由 service/agent 在组装时从 persona service 获取（P4-001 后）；P2-004 用配置 `agent.system_prompt` 静态占位（经 Instruction 注入）。infra 构造参数不绑动态人格，保证 P4 人格动态化时 **infra 零改动**。人格的"更新"（update_persona tool）与"注入"（消息列表）是两条路：注入走 service 组装，更新走 P4 的 tool 机制。
 5. **模板跟随数据所有者**：摘要压缩 prompt 的数据只来自窗口 ⇒ 归 service/memory 内部（P3-003）；对话 prompt 的数据横跨 persona/memory 两个 service ⇒ 归 service/agent 编排（P6-001 完整实现，P2-004 最小实现）。
 
 ### 4.3 备选方案（不采纳）
@@ -153,7 +153,7 @@ func NewChatModel(ctx context.Context, config *ChatModelConfig) (*ChatModel, err
 
 ### 4.4 对 P2-004 的落点
 
-- `prompt.system` 配置 = **机器人自身系统提示词**（人设占位文案，静态）；`GenerateReply` 最小组装 = `[system] + 用户消息`；完整五段组装属 P6-001。
+- `agent.system_prompt` 配置 = **机器人自身系统提示词**（人设占位文案，静态，经 Instruction 注入）；`GenerateReply` 最小组装 = `[user 消息]`（system 由 Instruction 前置）；完整五段组装属 P6-001。
 - 不引入 eino ChatTemplate / StateModifier / MessagesTemplate。
 
 ---
@@ -191,10 +191,10 @@ func NewChatModel(ctx context.Context, config *ChatModelConfig) (*ChatModel, err
 
 | 步骤 | 内容 |
 |---|---|
-| 2.1 | `pkg/config/config.go` 新增结构（mapstructure tag + 注释）：<br>`LLMConfig{Provider string, TimeoutSeconds int, OpenAI OpenAICompatConfig}`<br>`OpenAICompatConfig{BaseURL string, APIKey string, Model string, Temperature *float64, MaxTokens int}`<br>`ToolsConfig{Enabled []string}`<br>`PromptConfig{System string}` |
-| 2.2 | `Config` 根结构增加 `LLM LLMConfig`、`Tools ToolsConfig`、`Prompt PromptConfig` |
-| 2.3 | 默认常量下沉 `pkg/config`（消费方兜底原则，config 层不改写字段）：<br>`DefaultLLMProvider = "openai"`；`DefaultOpenAIBaseURL = "https://api.openai.com/v1"`；`DefaultLLMTimeoutSeconds = 60`；`DefaultSystemPrompt`（机器人人设占位文案）<br>兜底语义：provider 空 → openai；base_url 空 → 默认；api_key 空 → 透传（本地 Ollama 场景）；timeout_seconds ≤0 → 60；temperature nil → 不传（模型默认）；max_tokens ≤0 → 不传；model 空 → **构造期报错**（不可猜）；prompt.system 空 → DefaultSystemPrompt |
-| 2.4 | `config.default.yaml` 与根 `config.yaml` **双处同步**：llm 段示例 `base_url: https://api.deepseek.com/v1`、`model: deepseek-chat`、`api_key: ""`；`tools.enabled: []`；`prompt.system: <默认人设文案>` |
+| 2.1 | `pkg/config/config.go` 新增结构（mapstructure tag + 注释）：<br>`LLMConfig{Provider string, TimeoutSeconds int, OpenAI OpenAICompatConfig}`<br>`OpenAICompatConfig{BaseURL string, APIKey string, Model string, Temperature *float64, MaxTokens int}`<br>`ToolsConfig{Enabled []string}`<br>`AgentConfig{Name string, Description string, SystemPrompt string}`（原 PromptConfig 实施期并入，prompt 段废弃） |
+| 2.2 | `Config` 根结构增加 `LLM LLMConfig`、`Tools ToolsConfig`、`Agent AgentConfig` |
+| 2.3 | 默认常量下沉 `pkg/config`（消费方兜底原则，config 层不改写字段）：<br>`DefaultLLMProvider = "openai"`；`DefaultOpenAIBaseURL = "https://api.openai.com/v1"`；`DefaultLLMTimeoutSeconds = 60`；`DefaultAgentName = "PlumeBot"`；`DefaultAgentDescription`；`DefaultSystemPrompt`（机器人人设占位文案）<br>兜底语义：provider 空 → openai；base_url 空 → 默认；api_key 空 → 透传（本地 Ollama 场景）；timeout_seconds ≤0 → 60；temperature nil → 不传（模型默认）；max_tokens ≤0 → 不传；model 空 → **构造期报错**（不可猜）；agent.name 空 → DefaultAgentName；agent.description 空 → DefaultAgentDescription；agent.system_prompt 空 → DefaultSystemPrompt |
+| 2.4 | `config.default.yaml` 与根 `config.yaml` **双处同步**：llm 段示例 `base_url: https://api.deepseek.com/v1`、`model: deepseek-chat`、`api_key: ""`；`tools.enabled: []`；`agent` 段 `name/description/system_prompt` |
 | 2.5 | 单测 `pkg/config/config_test.go`：三段解析、空值兜底（provider/base_url/timeout/system）、temperature 指针语义、未知字段忽略 |
 
 **验收**：`go test ./pkg/config/` 通过；`go build ./...` 通过。
@@ -280,6 +280,6 @@ func NewChatModel(ctx context.Context, config *ChatModelConfig) (*ChatModel, err
 ## 9. 评审结论（2026-08 已确认）
 
 - [x] **版本策略：锁定 eino v0.8.13**（理由见 §3；v0.9 adk 列为 B-008 观察项）
-- [x] **prompt 架构：方案 A（实施期修订为 A'）**——系统提示词（机器人固定人设）经 `ChatModelAgentConfig.Instruction` 注入，由 provider 工厂传 `cfg.Prompt.System`（空值兜底 `config.DefaultSystemPrompt`）；service/agent 只透传业务消息（移除 system 前置逻辑）。修订理由（用户拍板 2026-08）：机器人系统提示词全局固定，与 P4 人格系统（群聊成员画像，走消息列表）无耦合，Instruction 是 eino 原生机制；Name/Description 同时补齐（multi-agent 铺路）。eino ChatTemplate/StateModifier 仍未引入
+- [x] **prompt 架构：方案 A（实施期修订为 A'）**——系统提示词（机器人固定人设）经 `ChatModelAgentConfig.Instruction` 注入，由 provider 工厂传 `cfg.Agent.SystemPrompt`（空值兜底 `config.DefaultSystemPrompt`）；service/agent 只透传业务消息（移除 system 前置逻辑）。修订理由（用户拍板 2026-08）：机器人系统提示词全局固定，与 P4 人格系统（群聊成员画像，走消息列表）无耦合，Instruction 是 eino 原生机制；Name/Description 同时配置化（`cfg.Agent.Name/Description`，空值兜底默认常量，multi-agent 铺路：未来演进为 agents 列表 + active 选择，每个 agent 一份三要素，LLM 配置保持全局 provider 注册中心）。eino ChatTemplate/StateModifier 仍未引入
 - [x] **temperature / max_tokens 未配置语义：不传（模型默认）**
 - [x] **新增遗留事项 B-008、B-009 采纳**（阶段 5 写入 roadmap）

@@ -13,6 +13,7 @@ import (
 
 	"plumebot/internal/domain"
 	"plumebot/internal/domain/entity"
+	"plumebot/pkg/config"
 )
 
 // defaultMaxIterations 是 tool 自动循环上限（adk 默认同为 20，显式设置防止未来默认值变化）。
@@ -25,29 +26,24 @@ var errNoModelOutput = errors.New("模型未返回任何消息")
 var _ domain.Agent = (*EinoAgent)(nil)
 
 // EinoAgent 是基于 eino ChatModelAgent 的 domain.Agent 实现。
-// 系统提示词经 Instruction 注入（固定人设，组装在 infra 层，由工厂传入 cfg.Prompt.System）；
+// 系统提示词经 Instruction 注入（固定人设，组装在 infra 层，由工厂传 cfg.Agent）；
 // 对话上下文（历史、画像等）由消息列表携带，工具按需注入。
 type EinoAgent struct {
 	agent *adk.ChatModelAgent
 }
 
-// agentName / agentDescription 是 agent 元数据标识。
-// adk 要求 Name/Description 非空才能被 NewAgentTool 包装为子 agent 工具；
-// 当前单 agent 场景不依赖，但规范填写为将来 multi-agent 铺路。
-const (
-	agentName        = "PlumeBot"
-	agentDescription = "PlumeBot：QQ 群聊 AI 机器人，负责对话回复。"
-)
-
 // NewEinoAgent 组装 eino ChatModelAgent。
-// instruction 为机器人系统提示词（固定人设，由工厂注入 cfg.Prompt.System；空 → 无 system prompt）；
+// acfg 为 agent 元数据与人设：Name/Description 是 adk 元数据标识
+// （adk 要求 Name/Description 非空才能被 NewAgentTool 包装为子 agent 工具，
+// 当前单 agent 场景不依赖，但规范填写为将来 multi-agent 铺路；由工厂兜底默认值）；
+// SystemPrompt 为机器人系统提示词（固定人设，经 Instruction 注入，由工厂兜底 DefaultSystemPrompt）；
 // tools 为空时不注入 ToolsConfig（空 ToolsNodeConfig 行为未验证，不冒险）；
 // MaxIterations 显式兜底 defaultMaxIterations。
-func NewEinoAgent(ctx context.Context, cm model.BaseChatModel, tools []tool.BaseTool, instruction string) (*EinoAgent, error) {
+func NewEinoAgent(ctx context.Context, cm model.BaseChatModel, tools []tool.BaseTool, acfg config.AgentConfig) (*EinoAgent, error) {
 	cfg := &adk.ChatModelAgentConfig{
-		Name:          agentName,
-		Description:   agentDescription,
-		Instruction:   instruction,
+		Name:          acfg.Name,
+		Description:   acfg.Description,
+		Instruction:   acfg.SystemPrompt,
 		Model:         cm,
 		MaxIterations: defaultMaxIterations,
 	}

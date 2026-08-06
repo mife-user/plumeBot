@@ -27,12 +27,16 @@ const (
 	DefaultBotName = "PlumeBot"
 	DefaultWsURL   = "ws://127.0.0.1:3001"
 
+	// Agent 默认值（消费方兜底，P2-004 阶段 5 起由 infra/ai 消费）。
+	DefaultAgentName        = "PlumeBot"                      // agent.name 空 → 默认标识
+	DefaultAgentDescription = "PlumeBot：QQ 群聊 AI 机器人，负责对话回复。" // agent.description 空 → 默认描述
+	// DefaultSystemPrompt 是机器人系统提示词的占位文案（人设占位，P4 人格系统前使用）。
+	DefaultSystemPrompt = "你是 PlumeBot，一个活跃在 QQ 群聊中的 AI 赛博群友。你语气自然友好，用简体中文回复，内容简洁，贴合聊天语境。"
+
 	// LLM 接入默认值（阶段 4 起由 infra/ai 消费，空值/非法值在消费方兜底）。
 	DefaultLLMProvider       = "openai"                    // provider 空 → openai
 	DefaultOpenAIBaseURL     = "https://api.openai.com/v1" // base_url 空 → 默认端点
 	DefaultLLMTimeoutSeconds = 60                          // timeout_seconds ≤0 → 60
-	// DefaultSystemPrompt 是机器人系统提示词的占位文案（人设占位，P4 人格系统前使用）。
-	DefaultSystemPrompt = "你是 PlumeBot，一个活跃在 QQ 群聊中的 AI 赛博群友。你语气自然友好，用简体中文回复，内容简洁，贴合聊天语境。"
 )
 
 // Config 是应用程序的根配置结构体。
@@ -44,7 +48,7 @@ type Config struct {
 	Middleware MiddlewareConfig `mapstructure:"middleware"`
 	LLM        LLMConfig        `mapstructure:"llm"`
 	Tools      ToolsConfig      `mapstructure:"tools"`
-	Prompt     PromptConfig     `mapstructure:"prompt"`
+	Agent      AgentConfig      `mapstructure:"agent"`
 }
 
 // BotConfig 包含 bot 基础信息。
@@ -113,10 +117,16 @@ type ToolsConfig struct {
 	Enabled []string `mapstructure:"enabled"`
 }
 
-// PromptConfig 包含提示词配置。
-type PromptConfig struct {
-	// System 机器人系统提示词（人设占位文案）；空 → DefaultSystemPrompt。
-	System string `mapstructure:"system"`
+// AgentConfig 包含 agent 元数据与人设配置（P2-004 阶段 5 起由 infra/ai 消费）。
+// 未来多 agent：演进为 agents 列表 + active 选择（每个 agent 一份三要素），
+// 本段为当前唯一启用 agent 的配置；空值/非法值由消费方按默认常量兜底。
+type AgentConfig struct {
+	// Name agent 标识（adk 元数据，multi-agent 路由用，与 bot.name 展示名语义不同）；空 → DefaultAgentName。
+	Name string `mapstructure:"name"`
+	// Description 能力描述（adk 元数据，multi-agent 场景供其他 agent 判断是否转移任务）；空 → DefaultAgentDescription。
+	Description string `mapstructure:"description"`
+	// SystemPrompt 系统提示词（经 ChatModelAgentConfig.Instruction 注入，固定人设）；空 → DefaultSystemPrompt。
+	SystemPrompt string `mapstructure:"system_prompt"`
 }
 
 // Load 从 path 加载 YAML 配置文件。

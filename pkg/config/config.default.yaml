@@ -36,5 +36,7 @@ llm:
 tools:
   enabled: []                  # 启用的工具名列表；空 = 不注册任何工具
 
-prompt:
-  system: "你是 PlumeBot，一个活跃在 QQ 群聊中的 AI 赛博群友。你语气自然友好，用简体中文回复，内容简洁，贴合聊天语境。"
+agent:
+  name: PlumeBot              # agent 标识（adk 元数据，multi-agent 路由用）；空 → PlumeBot
+  description: ""             # 能力描述（adk 元数据）；空 → 默认描述
+  system_prompt: "你是 PlumeBot，一个活跃在 QQ 群聊中的 AI 赛博群友。你语气自然友好，用简体中文回复，内容简洁，贴合聊天语境。"

@@ -62,7 +62,7 @@ func TestLoadExistingFileNoFallback(t *testing.T) {
 			"onebot:\n  ws_url: \"\"\n"+
 			"middleware:\n  rate_limit:\n    rate: 0\n    burst: 0\n    max_wait_seconds: 0\n"+
 			"llm:\n  provider: \"\"\n  timeout_seconds: 0\n  openai:\n    base_url: \"\"\n    model: \"\"\n    max_tokens: 0\n"+
-			"prompt:\n  system: \"\"\n")
+			"agent:\n  name: \"\"\n  description: \"\"\n  system_prompt: \"\"\n")
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -84,7 +84,7 @@ func TestLoadExistingFileNoFallback(t *testing.T) {
 	if got := cfg.Middleware.RateLimit.MaxWaitSeconds; got != 0 {
 		t.Errorf("MaxWaitSeconds 零值不应被改写，实际 %v", got)
 	}
-	// LLM/Tools/Prompt 空值同样不做 Go 侧改写
+	// LLM/Tools/Agent 空值同样不做 Go 侧改写
 	if cfg.LLM.Provider != "" {
 		t.Errorf("LLM.Provider 空值不应被改写，实际 %q", cfg.LLM.Provider)
 	}
@@ -94,8 +94,8 @@ func TestLoadExistingFileNoFallback(t *testing.T) {
 	if cfg.LLM.OpenAI.BaseURL != "" || cfg.LLM.OpenAI.Model != "" || cfg.LLM.OpenAI.MaxTokens != 0 {
 		t.Errorf("LLM.OpenAI 空值不应被改写，实际 %+v", cfg.LLM.OpenAI)
 	}
-	if cfg.Prompt.System != "" {
-		t.Errorf("Prompt.System 空值不应被改写，实际 %q", cfg.Prompt.System)
+	if cfg.Agent.Name != "" || cfg.Agent.Description != "" || cfg.Agent.SystemPrompt != "" {
+		t.Errorf("Agent 空值不应被改写，实际 %+v", cfg.Agent)
 	}
 }
 
@@ -124,8 +124,8 @@ func TestLoadExistingFilePreservesValues(t *testing.T) {
 	}
 }
 
-// LLM/Tools/Prompt 各字段的合法值解析，temperature 以指针形式保留。
-func TestLoadLLMToolsPromptValues(t *testing.T) {
+// LLM/Tools/Agent 各字段的合法值解析，temperature 以指针形式保留。
+func TestLoadLLMToolsAgentValues(t *testing.T) {
 	// 隔离宿主环境：本用例断言文件中的 api_key 原样保留，不受用户环境变量影响。
 	t.Setenv(EnvLLMAPIKey, "")
 
@@ -143,8 +143,10 @@ func TestLoadLLMToolsPromptValues(t *testing.T) {
 			"  enabled:\n"+
 			"    - tool_a\n"+
 			"    - tool_b\n"+
-			"prompt:\n"+
-			"  system: 测试人设\n")
+			"agent:\n"+
+			"  name: TestAgent\n"+
+			"  description: 测试描述\n"+
+			"  system_prompt: 测试人设\n")
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -179,8 +181,14 @@ func TestLoadLLMToolsPromptValues(t *testing.T) {
 	if len(cfg.Tools.Enabled) != 2 || cfg.Tools.Enabled[0] != "tool_a" || cfg.Tools.Enabled[1] != "tool_b" {
 		t.Errorf("Tools.Enabled = %v，期望 [tool_a tool_b]", cfg.Tools.Enabled)
 	}
-	if cfg.Prompt.System != "测试人设" {
-		t.Errorf("Prompt.System = %q，期望 测试人设", cfg.Prompt.System)
+	if cfg.Agent.Name != "TestAgent" {
+		t.Errorf("Agent.Name = %q，期望 TestAgent", cfg.Agent.Name)
+	}
+	if cfg.Agent.Description != "测试描述" {
+		t.Errorf("Agent.Description = %q，期望 测试描述", cfg.Agent.Description)
+	}
+	if cfg.Agent.SystemPrompt != "测试人设" {
+		t.Errorf("Agent.SystemPrompt = %q，期望 测试人设", cfg.Agent.SystemPrompt)
 	}
 }
 
@@ -283,7 +291,7 @@ func TestLoadMissingFileCreatesParentDir(t *testing.T) {
 // 嵌入的默认配置应包含全部配置节（与 Config 结构对应）。
 func TestDefaultYAMLHasAllSections(t *testing.T) {
 	content := string(defaultConfigYAML)
-	for _, section := range []string{"bot:", "onebot:", "log:", "control:", "middleware:", "rate_limit:", "llm:", "openai:", "tools:", "prompt:"} {
+	for _, section := range []string{"bot:", "onebot:", "log:", "control:", "middleware:", "rate_limit:", "llm:", "openai:", "tools:", "agent:"} {
 		if !strings.Contains(content, section) {
 			t.Errorf("默认配置缺少 %q 节", section)
 		}

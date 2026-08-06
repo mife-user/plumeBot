@@ -126,14 +126,25 @@ func TestOpenAIFactoryConstruct(t *testing.T) {
 	}
 }
 
-// prompt.system 为空 → 兜底 DefaultSystemPrompt 注入 Instruction（构造成功即证明走了兜底路径）。
+// agent.system_prompt 为空 → 兜底 DefaultSystemPrompt 注入 Instruction（构造成功即证明走了兜底路径）。
 func TestOpenAIFactoryPromptFallback(t *testing.T) {
 	f := NewOpenAIFactory(NewToolsRegistry())
 	cfg := fullLLMCfg()
-	cfg.Prompt = config.PromptConfig{System: ""}
+	cfg.Agent = config.AgentConfig{}
 
 	if _, err := f(context.Background(), cfg); err != nil {
-		t.Fatalf("prompt.system 空应兜底默认人设，实际报错: %v", err)
+		t.Fatalf("agent.system_prompt 空应兜底默认人设，实际报错: %v", err)
+	}
+}
+
+// agent.name/description 为空 → 兜底默认常量（构造成功即证明元数据被接受）。
+func TestOpenAIFactoryAgentMetaFallback(t *testing.T) {
+	f := NewOpenAIFactory(NewToolsRegistry())
+	cfg := fullLLMCfg()
+	cfg.Agent = config.AgentConfig{}
+
+	if _, err := f(context.Background(), cfg); err != nil {
+		t.Fatalf("agent.name/description 空应兜底默认值，实际报错: %v", err)
 	}
 }
 

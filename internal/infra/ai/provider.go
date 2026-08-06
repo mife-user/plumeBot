@@ -66,7 +66,9 @@ func registeredProviders(m map[string]Factory) string {
 // 依赖工具注册表，通过闭包注入：按 cfg.Tools.Enabled 过滤启用工具。
 // 兜底语义（消费方）：base_url 空 → DefaultOpenAIBaseURL；model 空 → 构造期报错（不可猜测）；
 // timeout_seconds ≤0 → DefaultLLMTimeoutSeconds；api_key 空透传；Temperature 转 *float32；
-// MaxTokens >0 → MaxCompletionTokens（*int，不用已废弃的 MaxTokens 字段）。
+// MaxTokens >0 → MaxCompletionTokens（*int，不用已废弃的 MaxTokens 字段）；
+// agent 三要素兜底：name 空 → DefaultAgentName，description 空 → DefaultAgentDescription，
+// system_prompt 空 → DefaultSystemPrompt（均经 Instruction/元数据注入 EinoAgent）。
 func NewOpenAIFactory(tr *ToolsRegistry) Factory {
 	return func(ctx context.Context, cfg config.Config) (domain.Agent, error) {
 		o := cfg.LLM.OpenAI
@@ -110,11 +112,17 @@ func NewOpenAIFactory(tr *ToolsRegistry) Factory {
 		if err != nil {
 			return nil, err
 		}
-		// 系统提示词注入 Instruction（固定人设；空值兜底默认常量，消费方兜底原则）。
-		instruction := cfg.Prompt.System
-		if instruction == "" {
-			instruction = config.DefaultSystemPrompt
+		// agent 三要素兜底（消费方兜底原则）：空值 → 默认常量，避免默认值漂移。
+		acfg := cfg.Agent
+		if acfg.Name == "" {
+			acfg.Name = config.DefaultAgentName
 		}
-		return NewEinoAgent(ctx, cm, tools, instruction)
+		if acfg.Description == "" {
+			acfg.Description = config.DefaultAgentDescription
+		}
+		if acfg.SystemPrompt == "" {
+			acfg.SystemPrompt = config.DefaultSystemPrompt
+		}
+		return NewEinoAgent(ctx, cm, tools, acfg)
 	}
 }

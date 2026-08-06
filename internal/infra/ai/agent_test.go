@@ -27,7 +27,7 @@ func TestEinoAgentTextRoundtrip(t *testing.T) {
 		schema.AssistantMessage("你好，我是 PlumeBot。", nil),
 	}}
 
-	agent, err := NewEinoAgent(context.Background(), fake, nil)
+	agent, err := NewEinoAgent(context.Background(), fake, nil, "")
 	if err != nil {
 		t.Fatalf("NewEinoAgent 失败: %v", err)
 	}
@@ -52,10 +52,39 @@ func TestEinoAgentTextRoundtrip(t *testing.T) {
 	}
 }
 
+// Instruction 注入：固定人设由 instruction 参数提供，adk 在每次 Run 时前置为 system 消息
+// （defaultGenModelInput），业务消息只传 user。
+func TestEinoAgentInstructionInjected(t *testing.T) {
+	fake := &fakeChatModel{script: []*schema.Message{
+		schema.AssistantMessage("好的", nil),
+	}}
+
+	agent, err := NewEinoAgent(context.Background(), fake, nil, "你是 PlumeBot，一个赛博群友。")
+	if err != nil {
+		t.Fatalf("NewEinoAgent 失败: %v", err)
+	}
+
+	got, err := agent.Generate(context.Background(), []entity.ChatMessage{usrMsg("你好")})
+	if err != nil {
+		t.Fatalf("Generate 失败: %v", err)
+	}
+	if got != "好的" {
+		t.Errorf("回复 = %q", got)
+	}
+
+	in := fake.inputs[0]
+	if len(in) != 2 {
+		t.Fatalf("模型收到 %d 条消息，期望 2（instruction system + user）", len(in))
+	}
+	if in[0].Role != schema.System || in[0].Content != "你是 PlumeBot，一个赛博群友。" || in[1].Role != schema.User {
+		t.Errorf("消息列表不符: %+v，期望 [system(instruction), user]", in)
+	}
+}
+
 // 模型错误（脚本用尽）应透传，adk 会包装错误信息。
 func TestEinoAgentPropagatesModelError(t *testing.T) {
 	fake := &fakeChatModel{} // 空脚本 → 首次调用即报错
-	agent, err := NewEinoAgent(context.Background(), fake, nil)
+	agent, err := NewEinoAgent(context.Background(), fake, nil, "")
 	if err != nil {
 		t.Fatalf("NewEinoAgent 失败: %v", err)
 	}
@@ -94,7 +123,7 @@ func TestEinoAgentToolLoop(t *testing.T) {
 		schema.AssistantMessage("已回显：hi", nil),
 	}}
 
-	agent, err := NewEinoAgent(context.Background(), fake, []tool.BaseTool{echo})
+	agent, err := NewEinoAgent(context.Background(), fake, []tool.BaseTool{echo}, "")
 	if err != nil {
 		t.Fatalf("NewEinoAgent 失败: %v", err)
 	}
@@ -126,7 +155,7 @@ func TestEinoAgentToolLoop(t *testing.T) {
 // 模型返回 nil 消息：adk 或 EinoAgent 应报错，不得返回空串静默成功。
 func TestEinoAgentNilModelOutput(t *testing.T) {
 	fake := &fakeChatModel{script: []*schema.Message{nil}}
-	agent, err := NewEinoAgent(context.Background(), fake, nil)
+	agent, err := NewEinoAgent(context.Background(), fake, nil, "")
 	if err != nil {
 		t.Fatalf("NewEinoAgent 失败: %v", err)
 	}

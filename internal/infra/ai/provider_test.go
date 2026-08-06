@@ -126,6 +126,17 @@ func TestOpenAIFactoryConstruct(t *testing.T) {
 	}
 }
 
+// prompt.system 为空 → 兜底 DefaultSystemPrompt 注入 Instruction（构造成功即证明走了兜底路径）。
+func TestOpenAIFactoryPromptFallback(t *testing.T) {
+	f := NewOpenAIFactory(NewToolsRegistry())
+	cfg := fullLLMCfg()
+	cfg.Prompt = config.PromptConfig{System: ""}
+
+	if _, err := f(context.Background(), cfg); err != nil {
+		t.Fatalf("prompt.system 空应兜底默认人设，实际报错: %v", err)
+	}
+}
+
 // model 为空 → 构造期报错（不可猜测）。
 func TestOpenAIFactoryModelEmpty(t *testing.T) {
 	f := NewOpenAIFactory(NewToolsRegistry())

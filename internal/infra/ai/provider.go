@@ -110,6 +110,11 @@ func NewOpenAIFactory(tr *ToolsRegistry) Factory {
 		if err != nil {
 			return nil, err
 		}
-		return NewEinoAgent(ctx, cm, tools)
+		// 系统提示词注入 Instruction（固定人设；空值兜底默认常量，消费方兜底原则）。
+		instruction := cfg.Prompt.System
+		if instruction == "" {
+			instruction = config.DefaultSystemPrompt
+		}
+		return NewEinoAgent(ctx, cm, tools, instruction)
 	}
 }

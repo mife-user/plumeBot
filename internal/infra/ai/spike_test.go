@@ -268,8 +268,8 @@ func TestSpikeLiveLLM(t *testing.T) {
 		t.Fatalf("组装 Agent 失败: %v", err)
 	}
 
+	// 系统提示词由工厂经 Instruction 注入（cfg.Prompt.System），此处只传业务消息。
 	msgs := []entity.ChatMessage{
-		{Role: entity.RoleSystem, Parts: []entity.ContentPart{{Type: entity.PartTypeText, Text: "你是 PlumeBot，一个赛博群友。"}}},
 		{Role: entity.RoleUser, Parts: []entity.ContentPart{{Type: entity.PartTypeText, Text: "你好，用一句话介绍你自己。"}}},
 	}
 	if imgURL := os.Getenv("PLUMEBOT_TEST_LLM_IMAGE_URL"); imgURL != "" {

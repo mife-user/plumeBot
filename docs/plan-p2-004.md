@@ -280,6 +280,6 @@ func NewChatModel(ctx context.Context, config *ChatModelConfig) (*ChatModel, err
 ## 9. 评审结论（2026-08 已确认）
 
 - [x] **版本策略：锁定 eino v0.8.13**（理由见 §3；v0.9 adk 列为 B-008 观察项）
-- [x] **prompt 架构：方案 A**——service/agent 组装，Go 原生拼接，不引入 eino ChatTemplate/StateModifier；memory 只管结构化数据，人格作为 system 内容由 service 注入（理由见 §4）
+- [x] **prompt 架构：方案 A（实施期修订为 A'）**——系统提示词（机器人固定人设）经 `ChatModelAgentConfig.Instruction` 注入，由 provider 工厂传 `cfg.Prompt.System`（空值兜底 `config.DefaultSystemPrompt`）；service/agent 只透传业务消息（移除 system 前置逻辑）。修订理由（用户拍板 2026-08）：机器人系统提示词全局固定，与 P4 人格系统（群聊成员画像，走消息列表）无耦合，Instruction 是 eino 原生机制；Name/Description 同时补齐（multi-agent 铺路）。eino ChatTemplate/StateModifier 仍未引入
 - [x] **temperature / max_tokens 未配置语义：不传（模型默认）**
 - [x] **新增遗留事项 B-008、B-009 采纳**（阶段 5 写入 roadmap）

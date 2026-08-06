@@ -5,33 +5,21 @@ import (
 
 	"plumebot/internal/domain"
 	"plumebot/internal/domain/entity"
-	"plumebot/pkg/config"
 )
 
-// AgentService 负责 prompt 组装与 Agent 推理编排。
+// AgentService 负责消息组装与 Agent 推理编排。
+// 系统提示词已下沉至 infra 层（ChatModelAgentConfig.Instruction，由 provider 工厂
+// 注入 cfg.Prompt.System，空值兜底 config.DefaultSystemPrompt），本层只透传业务消息。
 type AgentService struct {
-	agent        domain.Agent
-	systemPrompt string // 机器人系统提示词（main 注入 cfg.Prompt.System；空则兜底默认常量）
+	agent domain.Agent
 }
 
-// NewAgentService 创建 AgentService，注入 domain.Agent 实现与系统提示词。
-func NewAgentService(agent domain.Agent, systemPrompt string) *AgentService {
-	return &AgentService{agent: agent, systemPrompt: systemPrompt}
+// NewAgentService 创建 AgentService，注入 domain.Agent 实现。
+func NewAgentService(agent domain.Agent) *AgentService {
+	return &AgentService{agent: agent}
 }
 
-// GenerateReply 组装完整消息列表（system 前置 + 追加消息）并调用 Agent 生成回复。
+// GenerateReply 透传消息列表调用 Agent 生成回复。
 func (s *AgentService) GenerateReply(ctx context.Context, msgs []entity.ChatMessage) (string, error) {
-	system := s.systemPrompt
-	if system == "" {
-		system = config.DefaultSystemPrompt
-	}
-
-	all := make([]entity.ChatMessage, 0, len(msgs)+1)
-	all = append(all, entity.ChatMessage{
-		Role:  entity.RoleSystem,
-		Parts: []entity.ContentPart{{Type: entity.PartTypeText, Text: system}},
-	})
-	all = append(all, msgs...)
-
-	return s.agent.Generate(ctx, all)
+	return s.agent.Generate(ctx, msgs)
 }

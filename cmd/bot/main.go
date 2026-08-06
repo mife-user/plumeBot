@@ -54,7 +54,7 @@ func main() {
 	exePlugin := &plugin_exe.PluginEXEStub{}
 
 	// 3. 注入 service
-	agentSvc := agent.NewAgentService(agentInfra, cfg.Prompt.System)
+	agentSvc := agent.NewAgentService(agentInfra)
 	memorySvc := memory.NewMemoryService(memory.Nop(), storageInfra)
 	personaSvc := persona.NewPersonaService(persona.Nop())
 	pluginSvc := plugin.NewPluginService(soPlugin, exePlugin)

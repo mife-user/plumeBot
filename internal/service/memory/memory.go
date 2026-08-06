@@ -15,7 +15,7 @@ type nopMemory struct{}
 
 var _ domain.Memory = (*nopMemory)(nil)
 
-func (m *nopMemory) AppendMessage(_ context.Context, _ entity.Message) error        { return nil }
+func (m *nopMemory) AppendMessage(_ context.Context, _ entity.Message) error         { return nil }
 func (m *nopMemory) GetWindow(_ context.Context, _ string) ([]entity.Message, error) { return nil, nil }
 
 // Nop 返回 domain.Memory 的无操作实现。

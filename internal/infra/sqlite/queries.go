@@ -53,9 +53,9 @@ const (
 
 	// ── persona ──
 
-	sqlInsertPersona    = `INSERT INTO persona (userid, groupid, extend, traits) VALUES (?, ?, ?, ?)`
-	sqlUpdatePersona    = `UPDATE persona SET userid=?, groupid=?, extend=?, traits=? WHERE id=?`
-	sqlGetPersona       = `SELECT id, userid, groupid, extend, traits FROM persona WHERE id = ?`
+	sqlInsertPersona     = `INSERT INTO persona (userid, groupid, extend, traits) VALUES (?, ?, ?, ?)`
+	sqlUpdatePersona     = `UPDATE persona SET userid=?, groupid=?, extend=?, traits=? WHERE id=?`
+	sqlGetPersona        = `SELECT id, userid, groupid, extend, traits FROM persona WHERE id = ?`
 	sqlGetDefaultPersona = `SELECT id, userid, groupid, extend, traits FROM persona WHERE groupid = 0 LIMIT 1`
 
 	// ── bot_state ──

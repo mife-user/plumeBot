@@ -28,9 +28,9 @@ const (
 	DefaultWsURL   = "ws://127.0.0.1:3001"
 
 	// LLM 接入默认值（阶段 4 起由 infra/ai 消费，空值/非法值在消费方兜底）。
-	DefaultLLMProvider       = "openai"                // provider 空 → openai
+	DefaultLLMProvider       = "openai"                    // provider 空 → openai
 	DefaultOpenAIBaseURL     = "https://api.openai.com/v1" // base_url 空 → 默认端点
-	DefaultLLMTimeoutSeconds = 60                      // timeout_seconds ≤0 → 60
+	DefaultLLMTimeoutSeconds = 60                          // timeout_seconds ≤0 → 60
 	// DefaultSystemPrompt 是机器人系统提示词的占位文案（人设占位，P4 人格系统前使用）。
 	DefaultSystemPrompt = "你是 PlumeBot，一个活跃在 QQ 群聊中的 AI 赛博群友。你语气自然友好，用简体中文回复，内容简洁，贴合聊天语境。"
 )

@@ -8,8 +8,8 @@
 | Go 版本 | 1.26.4 (go.mod: `go 1.26.4`) |
 | 模块名 | `plumebot` |
 | 入口 | `cmd/bot/main.go` |
-| 当前阶段 | 第二阶段：基础设施接入（P2-001~004 全部完成） |
-| 任务台账 | `docs/roadmap.md`（阶段任务表 + 「待办与遗留事项」B-001~B-007） |
+| 当前阶段 | 第三阶段：记忆系统（P3-001 上下文窗口待做） |
+| 任务台账 | `docs/roadmap.md`（阶段任务表 + 「待办与遗留事项」B-002~B-009） |
 
 ```bash
 # 编译
@@ -76,26 +76,27 @@ PlumeBot
 当前阶段：
 
 ```text
-第二阶段：基础设施接入
+第三阶段：记忆系统
 ```
 
 本阶段目标：
 
 ```text
-ZeroBot 连通 NapCat 可收发消息，SQLite 可读写，eino Agent 可调用 LLM。
-已完成：P2-001 SQLite 存储层、P2-002 ZeroBot 连接层、P2-003 消息中间件链
+上下文窗口滚动、画像按需加载缓存、摘要压缩流水线。
+已完成：第一阶段（项目骨架）、第二阶段（基础设施接入）——
+P2-001 SQLite 存储层、P2-002 ZeroBot 连接层、P2-003 消息中间件链
 （日志 → 限流 → 敏感词过滤，敏感词为 Aho-Corasick 实装）、
 P2-004 eino Agent 接入（eino v0.8.13 + eino-ext openai，多模态消息、tool 机制、
 provider 注册中心；真实 LLM 冒烟见 internal/infra/ai/spike_test.go 的 TestSpikeLiveLLM，
 PLUMEBOT_TEST_LLM=1 门控）。
+进行中：P3-001 上下文窗口（ring buffer，20→100 轮）。
 ```
 
-禁止提前实现（第二阶段禁令）：
+禁止提前实现（第三阶段禁令）：
 
-- 上下文窗口管理、画像缓存、压缩摘要、记忆更新 Tool；
-- 人格系统；
-- 插件系统；
-- 触发控制（mention/auto 模式、状态规则）；
+- 人格系统（P4-001）；
+- 插件系统（P4-002/003）；
+- 触发模式与状态规则（P5-001/002）；
 - 完整 Agent 对话闭环（群聊回复闭环属 P6-002；当前管线末端保持 `tailHandler` stub，Agent 能力由 eino 直调验证）
 
 ---
@@ -179,7 +180,8 @@ plumebot/
 ├── config.yaml                     # 本地配置文件（不入库，见 .gitignore；api_key 可用环境变量 PLUMEBOT_LLM_OPENAI_API_KEY 覆盖）
 ├── docs/
 │   ├── architecture.md             # 架构设计文档
-│   └── roadmap.md                  # 任务台账（阶段表 + 遗留事项 B-001~B-007）
+│   ├── roadmap.md                  # 任务台账（阶段表 + 遗留事项 B-002~B-009）
+│   └── eino-notes.md               # eino v0.8.13 API 速查（P2-004 spike 产出，升级评估时对照）
 ├── AGENTS.md                       # 本文件
 ├── README.md
 ├── go.mod
@@ -258,6 +260,10 @@ domain 零依赖
 - **中间件链在 service/event**：ZeroBot 无中间件机制（只有 Rule/Matcher/Engine.midHandler），业务管线属编排层，放 service 可单测。
 - **发送能力在 infra/onebot**：ZeroBot 的 `ctx` 只在连接层可见。限流/敏感词命中由 matcher 内 `ctx.Send` 固定文案回复（`rateLimitedReply`/`sensitiveWordReply` 常量）；通用发送接口 `domain.Sender` 见 roadmap B-003（P6 前实现）。
 - **连接层无事件级 context**：onebot 适配层传 `context.Background()`；service Handler 已预留 ctx 参数（B-007，未来仅改 onebot 一处）。
+- **LLM provider 注册中心为注入式实例**（P2-004）：`ai.Registry` 经 main 组装注入，非包级全局单例；`Factory func(ctx, config.Config) (domain.Agent, error)` 接收**完整 Config**（LLM 段 + Tools 段在工厂内组装）；工具表经 `NewOpenAIFactory(tr *ToolsRegistry)` 闭包注入（Factory 签名固定）。
+- **系统提示词经 Instruction 注入，人格不进 agent 层**（P2-004 方案 A'）：`agent.system_prompt` 配置 = 机器人固定人设，由 provider 工厂兜底（空 → `config.DefaultSystemPrompt`）后经 `ChatModelAgentConfig.Instruction` 注入；`domain.Agent.Generate` 收完整消息列表，P4 人格（群聊成员画像，动态数据）走消息列表携带，infra 零改动。
+- **agent 三要素配置化，多 agent 平滑演进**（P2-004）：`agent.name/description/system_prompt`（空值兜底 `config.DefaultAgentName/DefaultAgentDescription/DefaultSystemPrompt`）；`agent.name` 是 adk 元数据标识（multi-agent 路由），与 `bot.name`（QQ 展示名）语义独立不耦合；未来多 agent 演进为 `agents.list[]` + `active` 选择（每项一份三要素，LLM 保持全局 provider 注册中心），本期不实现。
+- **模板不替代 memory**（P2-004 评审）：eino ChatTemplate/StateModifier **不引入**（service 层不能 import infra 类型；组装逻辑不进 infra）；memory 存结构化数据不做渲染（同一数据源多渲染目标）；prompt 组装在 service 层（P6-001 完整五段），摘要压缩 prompt 归 service/memory（P3-003）。
 
 ---
 

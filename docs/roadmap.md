@@ -8,9 +8,9 @@
 
 | 阶段 | 内容 | 产出 |
 |------|------|------|
-| 第一阶段 | 项目骨架 | 可编译、零外部依赖的空框架 |
-| 第二阶段 | 基础设施接入 | ZeroBot 连通 NapCat + eino 可用 + SQLite 落盘 |
-| 第三阶段 | 记忆系统 | 上下文窗口 + 画像 + 压缩摘要 |
+| 第一阶段 | 项目骨架 | 可编译、零外部依赖的空框架 | ✅ |
+| 第二阶段 | 基础设施接入 | ZeroBot 连通 NapCat + eino 可用 + SQLite 落盘 | ✅ |
+| 第三阶段 | 记忆系统 | 上下文窗口 + 画像 + 压缩摘要 | ⬜ |
 | 第四阶段 | 人格与插件 | 人格 extend 链 + .so 插件加载 |
 | 第五阶段 | 触发控制 | mention/auto 模式 + 状态规则 |
 | 第六阶段 | 联调验收 | 完整消息链路跑通，bot 可对话 |
@@ -121,7 +121,7 @@
 | B-005 | Control.Mode 空值兜底 | config 重构 | P5-001 接入 control 服务时 | 消费方自理默认值：mode 为空 → "mention"，在 control service 侧兜底（main 目前未接 cfg.Control） |
 | B-006 | 配置模板双份同步 | config 重构 | 新增配置字段时 | pkg/config/config.default.yaml 与根 config.yaml 需手动同步（config.go 注释已标明） |
 | B-007 | 连接级 context 传播 | P2-003 设计讨论 | ZeroBot 支持或自研连接时 | ZeroBot 无事件级 ctx，连接层传 context.Background()；service Handler 已预留 ctx 参数，未来仅需改 onebot 一处 |
-| B-008 | eino 版本升级观察 | P2-004 评审决策 | eino-ext 跟进 v0.9 后 | 当前锁定 eino v0.8.13（理由见 docs/plan-p2-004.md §3）：eino v0.9 已把 ChatModelAgent 重构进 adk 包（Runner + AsyncIterator 事件流），eino-ext 仍要求 v0.7.13。待 eino-ext 跟进 v0.9 且 adk API 稳定后评估迁移；期间 domain.Agent 门面不受影响 |
+| B-008 | eino 版本升级观察 | P2-004 评审决策 | eino-ext 跟进 v0.9 后 | 当前锁定 eino v0.8.13 + eino-ext openai v0.1.13。**不升 v0.9 的理由**（原 P2-004 计划文档 §3 决策，已归档进本行）：① eino-ext 生态滞后——eino-ext main 仍 require `eino v0.7.13`，与 v0.9 schema 大改（ToolInfo 移除 Bound/InvokableRun、agent 迁 adk）组合存在编译/行为不兼容风险；② v0.9 取最终文本需 Runner + AsyncIterator 事件循环，v0.8 为薄门面（消息进、文本出），本项目不需要事件流复杂度；③ v0.9 发布太新，文档与示例几乎全是旧 API，踩坑成本高；④ 本项目需要的多模态字段（UserInputMultiContent/MessageInputImage）、tool 自动循环在 v0.8.13 全部可用且非废弃；⑤ 迁移成本可控——domain.Agent 是门面，infra/ai 内部换实现不影响上层。API 速查见 docs/eino-notes.md；待 eino-ext 跟进 v0.9 且 adk API 稳定后评估迁移 |
 | B-009 | OneBot 图片段 → ChatMessage 映射 | P2-004 范围边界 | P6 接线时 | OneBot image 段（file/url 字段）→ entity.ContentPart 映射 P2-004 未做（entity.Message 未改）；NapCat 图片 URL 可达性（bot 侧能否直接访问）需验证 |
 
 ---

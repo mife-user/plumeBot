@@ -11,10 +11,16 @@ import (
 )
 
 // defaultConfigYAML 是嵌入的默认配置模板，配置文件缺失时写入磁盘。
-// 注意：模板与仓库根目录 config.yaml 各自独立，新增配置字段时需同步两处。
+// 注意：模板与仓库根目录 config.yaml 各自独立，新增配置字段时需同步两处；
+// config.yaml 已 .gitignore（含用户真实密钥，不入库）。
 //
 //go:embed config.default.yaml
 var defaultConfigYAML []byte
+
+// EnvLLMAPIKey 是 LLM API key 的环境变量名。
+// 优先级高于 config.yaml 的 llm.openai.api_key：环境变量非空时覆盖文件值，
+// 便于将密钥放入启动脚本/系统环境而非配置文件，避免误提交。
+const EnvLLMAPIKey = "PLUMEBOT_LLM_OPENAI_API_KEY"
 
 // 默认值常量：供各消费包在字段为空时兜底，避免默认值字符串在多处漂移。
 const (
@@ -116,6 +122,8 @@ type PromptConfig struct {
 // Load 从 path 加载 YAML 配置文件。
 // 配置文件不存在时，将嵌入的默认配置（config.default.yaml）写入 path 后再加载。
 // 字段空值/缺省不做 Go 侧兜底，由各消费包自行处理默认值。
+// 唯一例外：llm.openai.api_key 支持环境变量 EnvLLMAPIKey 覆盖（非空时优先于文件值，
+// 敏感密钥不入配置文件）。
 func Load(path string) (*Config, error) {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		if err := writeDefault(path); err != nil {
@@ -132,6 +140,11 @@ func Load(path string) (*Config, error) {
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, err
+	}
+
+	// 敏感字段环境变量覆盖：仅当环境变量非空时生效，空值保留文件配置。
+	if key := os.Getenv(EnvLLMAPIKey); key != "" {
+		cfg.LLM.OpenAI.APIKey = key
 	}
 
 	return &cfg, nil

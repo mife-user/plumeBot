@@ -126,6 +126,9 @@ func TestLoadExistingFilePreservesValues(t *testing.T) {
 
 // LLM/Tools/Prompt 各字段的合法值解析，temperature 以指针形式保留。
 func TestLoadLLMToolsPromptValues(t *testing.T) {
+	// 隔离宿主环境：本用例断言文件中的 api_key 原样保留，不受用户环境变量影响。
+	t.Setenv(EnvLLMAPIKey, "")
+
 	path := writeTempConfig(t,
 		"llm:\n"+
 			"  provider: openai\n"+
@@ -181,6 +184,36 @@ func TestLoadLLMToolsPromptValues(t *testing.T) {
 	}
 }
 
+// 环境变量 EnvLLMAPIKey 非空时覆盖文件中的 api_key（敏感密钥不入配置文件）。
+func TestLoadEnvAPIKeyOverrides(t *testing.T) {
+	path := writeTempConfig(t,
+		"llm:\n  provider: openai\n  openai:\n    api_key: sk-file\n    model: some-model\n")
+	t.Setenv(EnvLLMAPIKey, "sk-env")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("加载配置失败: %v", err)
+	}
+	if cfg.LLM.OpenAI.APIKey != "sk-env" {
+		t.Errorf("APIKey = %q，期望环境变量值 sk-env", cfg.LLM.OpenAI.APIKey)
+	}
+}
+
+// 环境变量为空时视为未设置，保留文件中的 api_key。
+func TestLoadEnvAPIKeyEmptyKeepsFile(t *testing.T) {
+	path := writeTempConfig(t,
+		"llm:\n  provider: openai\n  openai:\n    api_key: sk-file\n    model: some-model\n")
+	t.Setenv(EnvLLMAPIKey, "")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("加载配置失败: %v", err)
+	}
+	if cfg.LLM.OpenAI.APIKey != "sk-file" {
+		t.Errorf("APIKey = %q，期望保留文件值 sk-file", cfg.LLM.OpenAI.APIKey)
+	}
+}
+
 // temperature 缺省时指针应为 nil（消费方据此不传该参数）。
 func TestLoadTemperatureNilWhenAbsent(t *testing.T) {
 	path := writeTempConfig(t,
@@ -211,7 +244,9 @@ func TestLoadUnknownFieldsIgnored(t *testing.T) {
 }
 
 // B-006 守卫：根 config.yaml 与嵌入模板解析结果一致（防双份漂移）。
-// 注意：仅比较解析后的内容，不比较注释等格式差异。
+// 注意：① 仅比较解析后的内容，不比较注释等格式差异；
+// ② llm.openai.api_key 为敏感字段，允许本地与模板不一致（模板恒为空，
+// 本地由用户写入或环境变量 EnvLLMAPIKey 提供），比较前排除。
 func TestRootConfigYAMLSyncedWithDefault(t *testing.T) {
 	rootPath := filepath.Join("..", "..", "config.yaml")
 	rootCfg, err := Load(rootPath)
@@ -223,6 +258,9 @@ func TestRootConfigYAMLSyncedWithDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("加载默认模板失败: %v", err)
 	}
+
+	rootCfg.LLM.OpenAI.APIKey = ""
+	defaultCfg.LLM.OpenAI.APIKey = ""
 
 	if !reflect.DeepEqual(*rootCfg, *defaultCfg) {
 		t.Errorf("根 config.yaml 与嵌入默认模板不一致（新增配置字段时需双处同步，见 B-006）：\n根配置   = %+v\n默认模板 = %+v", *rootCfg, *defaultCfg)

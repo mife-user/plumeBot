@@ -56,7 +56,6 @@ func (c *Client) registerMatchers() {
 	zero.OnMessage().Handle(func(ctx *zero.Ctx) {
 		msg, ok := toMessage(ctx.Event)
 		if !ok {
-
 			logger.Warn("忽略不支持的 message 事件",
 				logger.S("post_type", ctx.Event.PostType),
 				logger.S("message_type", ctx.Event.MessageType),
@@ -65,15 +64,9 @@ func (c *Client) registerMatchers() {
 		}
 		// 消息日志统一由 service/event 日志中间件记录，这里不重复打 Info。
 		if err := c.msg.Handle(context.Background(), msg); err != nil {
-			if errors.Is(err, domain.ErrRateLimited) {
-				// 限流超时：已由中间件记录 warn，回复固定文案后静默返回。
+			if reply := decideReply(err); reply != "" {
 				// ctx.Send 自动回事件来源（群回群、私聊回私聊），发送失败由 ZeroBot 内部记录。
-				ctx.Send(rateLimitedReply)
-				return
-			}
-			if errors.Is(err, domain.ErrSensitiveWord) {
-				// 敏感词命中：已由中间件记录 warn（含命中词），回复固定文案后静默返回。
-				ctx.Send(sensitiveWordReply)
+				ctx.Send(reply)
 				return
 			}
 			logger.Warn("消息处理失败", logger.Err(err))
@@ -94,6 +87,18 @@ func (c *Client) registerMatchers() {
 			logger.S("meta_event_type", ctx.Event.RawEvent.Get("meta_event_type").String()),
 		)
 	})
+}
+
+// decideReply 根据管线返回的错误决定回复文案；不需要回复时返回空串。
+// 拆成纯函数便于单测：限流/敏感词命中 → 固定文案，其余错误/无错误 → 不回复。
+func decideReply(err error) string {
+	if errors.Is(err, domain.ErrRateLimited) {
+		return rateLimitedReply
+	}
+	if errors.Is(err, domain.ErrSensitiveWord) {
+		return sensitiveWordReply
+	}
+	return ""
 }
 
 // dispatchEvent 转换并分发通知/请求事件。

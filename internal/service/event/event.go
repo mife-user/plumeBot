@@ -10,6 +10,7 @@ import (
 	"plumebot/internal/service/persona"
 	"plumebot/internal/service/plugin"
 	"plumebot/pkg/config"
+	"plumebot/pkg/logger"
 )
 
 // EventService 是顶层事件调度编排，组合所有子 service。
@@ -44,8 +45,23 @@ func NewEventService(
 		rateLimitMiddleware(newRateLimiter(mwCfg.RateLimit)),
 		sensitiveWordMiddleware(newSensitiveWordFilter(mwCfg.SensitiveWords)),
 	}
-	s.msgChain = chain(mws, tailHandler)
+	s.msgChain = chain(mws, s.tail)
 	return s
+}
+
+// tail 是消息管线的末端处理：持久化消息（写入上下文窗口 + SQLite），窗口满时打压缩触发信号。
+// Agent 回复闭环（P6-002）尚未接入，这里仅完成记忆持久化。
+func (s *EventService) tail(ctx context.Context, msg entity.Message) error {
+	full, err := s.memory.PersistMessage(ctx, msg)
+	if err != nil {
+		return err
+	}
+	if full {
+		logger.Warn("窗口已达上限，触发压缩信号（P3-003）",
+			logger.S("group_id", msg.GroupID),
+		)
+	}
+	return nil
 }
 
 // HandleMessage 处理消息事件：走「日志 → 限流 → 敏感词 → 末端」管线。

@@ -38,9 +38,3 @@ func logMiddleware(next Handler) Handler {
 		return next(ctx, msg)
 	}
 }
-
-// tailHandler 是管线的末端处理，当前为 stub。
-// 后续阶段在此接入持久化（P3）、触发控制与命令分发（P5/P6）。
-func tailHandler(_ context.Context, _ entity.Message) error {
-	return nil
-}

@@ -55,7 +55,7 @@ func main() {
 
 	// 3. 注入 service
 	agentSvc := agent.NewAgentService(agentInfra)
-	memorySvc := memory.NewMemoryService(memory.Nop(), storageInfra)
+	memorySvc := memory.NewMemoryService(memory.NewWindow(), storageInfra)
 	personaSvc := persona.NewPersonaService(persona.Nop())
 	pluginSvc := plugin.NewPluginService(soPlugin, exePlugin)
 	controlSvc := control.NewControlService(control.Nop())

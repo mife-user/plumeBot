@@ -1,4 +1,7 @@
-# AGENTS.md
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # PlumeBot — AI 开发执行规范
 
 ## 0. 快速参考
@@ -8,7 +11,7 @@
 | Go 版本 | 1.26.4 (go.mod: `go 1.26.4`) |
 | 模块名 | `plumebot` |
 | 入口 | `cmd/bot/main.go` |
-| 当前阶段 | 第三阶段：记忆系统（P3-001 上下文窗口待做） |
+| 当前阶段 | 第三阶段：记忆系统（P3-002 画像加载与缓存待做） |
 | 任务台账 | `docs/roadmap.md`（阶段任务表 + 「待办与遗留事项」B-002~B-009） |
 
 ```bash
@@ -21,14 +24,12 @@ go build ./...
 # 静态分析
 go vet ./...
 
-# 测试（已有多包单测：service/event、pkg/ahocorasick、pkg/config、infra/onebot）
+# 测试（已有多包单测：service/event、pkg/ahocorasick、pkg/config、infra/onebot、infra/ai、service/agent）
 go test ./...
 
 # 运行（连接 NapCat，需先配置 config.yaml 的 onebot.ws_url；缺失配置会自动写入默认模板）
 ./bot.exe
 ```
-
----
 
 ## 1. 文档用途
 
@@ -53,9 +54,7 @@ AI 助手在开始任何任务前，必须先阅读本文件，并严格按照�
 完成 domain 层 storage 接口定义
 ```
 
-AI 助手必须根据本文件找到对应任务，只完成该任务，不顺带开发后续任务，也不实现任何未明确要求的业务功能。
-
----
+AI 助手必须根据 `docs/roadmap.md` 找到对应任务，只完成该任务，不顺带开发后续任务，也不实现任何未明确要求的业务功能。
 
 ## 2. 项目基本信息
 
@@ -89,7 +88,8 @@ P2-001 SQLite 存储层、P2-002 ZeroBot 连接层、P2-003 消息中间件链
 P2-004 eino Agent 接入（eino v0.8.13 + eino-ext openai，多模态消息、tool 机制、
 provider 注册中心；真实 LLM 冒烟见 internal/infra/ai/spike_test.go 的 TestSpikeLiveLLM，
 PLUMEBOT_TEST_LLM=1 门控）。
-进行中：P3-001 上下文窗口（ring buffer，20→100 轮）。
+已完成：P3-001 上下文窗口（ring buffer，20→100 轮 + 压缩触发信号 + 管线持久化接线）。
+进行中：P3-002 画像加载与缓存。
 ```
 
 禁止提前实现（第三阶段禁令）：
@@ -98,8 +98,6 @@ PLUMEBOT_TEST_LLM=1 门控）。
 - 插件系统（P4-002/003）；
 - 触发模式与状态规则（P5-001/002）；
 - 完整 Agent 对话闭环（群聊回复闭环属 P6-002；当前管线末端保持 `tailHandler` stub，Agent 能力由 eino 直调验证）
-
----
 
 ## 3. 技术栈
 
@@ -129,8 +127,6 @@ PLUMEBOT_TEST_LLM=1 门控）。
 可选能力（默认关闭）：
 
 - LLM API embedding（向量检索开关，需用户自行配置 API）。
-
----
 
 ## 4. 工程目录
 
@@ -182,13 +178,11 @@ plumebot/
 │   ├── architecture.md             # 架构设计文档
 │   ├── roadmap.md                  # 任务台账（阶段表 + 遗留事项 B-002~B-009）
 │   └── eino-notes.md               # eino v0.8.13 API 速查（P2-004 spike 产出，升级评估时对照）
-├── AGENTS.md                       # 本文件
+├── CLAUDE.md                       # 本文件
 ├── README.md
 ├── go.mod
 └── go.sum
 ```
-
----
 
 ## 5. 分层规则
 
@@ -258,14 +252,13 @@ domain 零依赖
 ### 5.6 已确立的架构决策
 
 - **中间件链在 service/event**：ZeroBot 无中间件机制（只有 Rule/Matcher/Engine.midHandler），业务管线属编排层，放 service 可单测。
-- **发送能力在 infra/onebot**：ZeroBot 的 `ctx` 只在连接层可见。限流/敏感词命中由 matcher 内 `ctx.Send` 固定文案回复（`rateLimitedReply`/`sensitiveWordReply` 常量）；通用发送接口 `domain.Sender` 见 roadmap B-003（P6 前实现）。
+- **发送能力在 infra/onebot**：ZeroBot 的 `ctx` 只在连接层可见（无 CtxFromEvent，`zero.GetBot` 拿到的 Ctx 的 Event 为 nil，只能用于 SendGroupMessage/SendPrivateMessage/CallAction）。限流/敏感词命中由 matcher 内 `ctx.Send` 固定文案回复（`rateLimitedReply`/`sensitiveWordReply` 常量）。Agent 回复采用**方案 A：回复上抛**——Handler 链签名 `(ctx,msg) error` → `(ctx,msg)(string,error)`，回复文本冒泡回 matcher 统一 `ctx.Send`（见 roadmap B-003）；`domain.Sender` 暂不引入，仅当出现非响应式主动发送需求（异步插件、定时、P5 auto 后续发言）时再定义。
 - **连接层无事件级 context**：onebot 适配层传 `context.Background()`；service Handler 已预留 ctx 参数（B-007，未来仅改 onebot 一处）。
 - **LLM provider 注册中心为注入式实例**（P2-004）：`ai.Registry` 经 main 组装注入，非包级全局单例；`Factory func(ctx, config.Config) (domain.Agent, error)` 接收**完整 Config**（LLM 段 + Tools 段在工厂内组装）；工具表经 `NewOpenAIFactory(tr *ToolsRegistry)` 闭包注入（Factory 签名固定）。
+- **Agent 实现细节**（P2-004，`internal/infra/ai`）：`EinoAgent` 封装 eino v0.8.13 的 `adk.ChatModelAgent` —— `Instruction` 注入固定人设、`Name`/`Description` 填 adk 元数据（为将来多 agent `NewAgentTool` 做准备）、`MaxIterations=20`（tool 循环上限）、仅当启用工具时才注入 `ToolsConfig`。工具挂在注入式 `ToolsRegistry` 上（无全局状态），`Register` 拒绝重复名。
 - **系统提示词经 Instruction 注入，人格不进 agent 层**（P2-004 方案 A'）：`agent.system_prompt` 配置 = 机器人固定人设，由 provider 工厂兜底（空 → `config.DefaultSystemPrompt`）后经 `ChatModelAgentConfig.Instruction` 注入；`domain.Agent.Generate` 收完整消息列表，P4 人格（群聊成员画像，动态数据）走消息列表携带，infra 零改动。
 - **agent 三要素配置化，多 agent 平滑演进**（P2-004）：`agent.name/description/system_prompt`（空值兜底 `config.DefaultAgentName/DefaultAgentDescription/DefaultSystemPrompt`）；`agent.name` 是 adk 元数据标识（multi-agent 路由），与 `bot.name`（QQ 展示名）语义独立不耦合；未来多 agent 演进为 `agents.list[]` + `active` 选择（每项一份三要素，LLM 保持全局 provider 注册中心），本期不实现。
 - **模板不替代 memory**（P2-004 评审）：eino ChatTemplate/StateModifier **不引入**（service 层不能 import infra 类型；组装逻辑不进 infra）；memory 存结构化数据不做渲染（同一数据源多渲染目标）；prompt 组装在 service 层（P6-001 完整五段），摘要压缩 prompt 归 service/memory（P3-003）。
-
----
 
 ## 6. 模块说明
 
@@ -339,9 +332,7 @@ domain 零依赖
 - `//go:embed config.default.yaml` 嵌入默认模板：`Load()` 时配置文件不存在则写入模板再加载；
 - **空值兜底由消费方负责**（如限流 rate≤0→2、burst≤0→20、max_wait≤0→10s；WsURL 空→`ws://127.0.0.1:3001`；Bot.Name 空→`PlumeBot`）；config 层不改写字段；
 - **唯一例外：`llm.openai.api_key`** 支持环境变量 `PLUMEBOT_LLM_OPENAI_API_KEY` 覆盖（非空时优先于文件值，敏感密钥不入配置文件）；
-- 新增配置字段必须**双处同步**：`pkg/config/config.default.yaml` + 根 `config.yaml`（config.go 注释已标明）。根 `config.yaml` 已被 `.gitignore`（本地文件，含用户真实密钥，不入库）；B-006 守卫测试比较时排除 `api_key` 字段。
-
----
+- 新增配置字段必须**双处同步**：`pkg/config/config.default.yaml` + 根 `config.yaml`（config.go 注释已标明）。根 `config.yaml` 已被 `.gitignore`（本地文件，含用户真实密钥，不入库）；守卫测试 `TestRootConfigYAMLSyncedWithDefault` 比较时排除 `api_key` 字段。
 
 ## 7. 代码规则
 
@@ -353,12 +344,10 @@ domain 零依赖
 6. 不提前实现任何业务逻辑（对照 roadmap 阶段禁令）。
 7. 不接入阶段外外部服务。
 8. 不为了"架构完整"创建大量空类和方法，只创建架构文档中明确列出的模块。
-10. 哨兵错误定义在 `internal/domain/errors.go`：`ErrNotFound`、`ErrConflict`、`ErrClosed`、`ErrRateLimited`、`ErrSensitiveWord`。参数化错误（如 `SensitiveWordError{Word}`）实现 `Unwrap()` 指向哨兵，上层用 `errors.Is` 判断，禁止在 infra 包内自定义哨兵。
-11. infra 包中 SQL DML 语句不得内嵌在方法体内，必须提取到 `queries.go` 作为包级 `const`；DDL 语句存放于 `migrations/*.sql` 通过 `//go:embed` 加载。
-12. 代码保持直接、易读，不引入不必要的抽象层。
-13. 配置空值兜底放在消费方（默认值集中下沉），pkg/config 不改写字段。
-
----
+9. 哨兵错误定义在 `internal/domain/errors.go`：`ErrNotFound`、`ErrConflict`、`ErrClosed`、`ErrRateLimited`、`ErrSensitiveWord`。参数化错误（如 `SensitiveWordError{Word}`）实现 `Unwrap()` 指向哨兵，上层用 `errors.Is` 判断，禁止在 infra 包内自定义哨兵。
+10. infra 包中 SQL DML 语句不得内嵌在方法体内，必须提取到 `queries.go` 作为包级 `const`；DDL 语句存放于 `migrations/*.sql` 通过 `//go:embed` 加载。
+11. 代码保持直接、易读，不引入不必要的抽象层。
+12. 配置空值兜底放在消费方（默认值集中下沉），pkg/config 不改写字段。
 
 ## 8. AI 助手每次任务的执行流程
 
@@ -368,7 +357,7 @@ domain 零依赖
 
 阅读：
 
-1. 本文件 `AGENTS.md`；
+1. 本文件 `CLAUDE.md`；
 2. `docs/architecture.md`；
 3. `docs/roadmap.md`（确认任务编号、状态、遗留事项）；
 4. 已有代码和目录结构。
@@ -419,8 +408,6 @@ go test ./...
 - 未完成事项（写入 roadmap「待办与遗留事项」）。
 
 完成后停止，不自动进入下一个任务。
-
----
 
 ## 9. 最重要的执行原则
 

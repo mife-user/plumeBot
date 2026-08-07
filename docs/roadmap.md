@@ -23,7 +23,7 @@
 
 | 任务编号 | 任务名 | 内容 | 优先级 | 涉及模块 | 启动条件 | 验收标准 | 状态 |
 |---|---------|------|:---:|------|------|------|:--:|
-| P1-001 | Go module 初始化 | `go mod init plumebot`，创建目录骨架（cmd/、internal/domain/、internal/service/、internal/handler/、internal/infra/、pkg/），写入 .gitignore (Go 标准) | P0 | 根工程 | 无 | `go mod tidy` 无报错；目录结构匹配 AGENTS.md | ✅ |
+| P1-001 | Go module 初始化 | `go mod init plumebot`，创建目录骨架（cmd/、internal/domain/、internal/service/、internal/handler/、internal/infra/、pkg/），写入 .gitignore (Go 标准) | P0 | 根工程 | 无 | `go mod tidy` 无报错；目录结构匹配 CLAUDE.md | ✅ |
 | P1-002 | 配置加载 (pkg/config) | 定义 Config 结构体（Bot、Log、Control），使用 viper 从 config.yaml 加载，Go 侧仅兜底默认值 | P0 | pkg/config | P1-001 完成 | `go build ./pkg/config/` 通过；加载 config.yaml 不 panic | ✅ |
 | P1-003 | domain 接口定义 | 定义 domain.Agent、domain.Memory、domain.Persona、domain.Plugin、domain.Storage、domain.Control 六个核心接口，零外部 import | P0 | internal/domain | P1-001 完成 | 每个接口 1-3 个方法签名，仅依赖标准库和 domain/entity；`go build ./internal/domain/` 通过 | ✅ |
 | P1-004 | domain 实体定义 | 定义 entity.Message、entity.Event、entity.MemberProfile、entity.GroupProfile、entity.Persona 等公共结构体 | P0 | internal/domain/entity | P1-001 完成 | 实体字段对齐架构文档 4、7、9 节；纯 struct 无方法限制 | ✅ |
@@ -92,7 +92,7 @@
 | 任务编号 | 任务名 | 内容 | 优先级 | 涉及模块 | 启动条件 | 验收标准 |
 |---|---------|------|:---:|------|------|------|
 | P6-001 | Prompt 组装联调 | 确认人格 → 群画像 → 压缩摘要 → 窗口 → 当前消息的 prompt 顺序正确 | P0 | service/agent + service/memory + service/persona | P3-003、P4-001 | 生成 prompt 格式符合架构文档第 6 节 |
-| P6-002 | 完整消息链路 | 端到端：收到群消息 → 中间件 → 触发判断 → 拼 prompt → Agent 推理 → 回复 → 记忆更新 → 窗口追加 | P0 | 全部 | 前五阶段全部完成 | bot 在群聊中被 @ 能正常回复；记忆正常更新；摘要正常生成 |
+| P6-002 | 完整消息链路 | 端到端：收到群消息 → 中间件 → 触发判断 → 拼 prompt → Agent 推理 → 回复（文本沿 Handler 链上抛、onebot 闭包统一 ctx.Send，机制见 B-003）→ 记忆更新 → 窗口追加 | P0 | 全部 | 前五阶段全部完成 | bot 在群聊中被 @ 能正常回复；记忆正常更新；摘要正常生成 |
 | P6-003 | 稳定性验证 | 连续运行数小时，检查内存泄漏、goroutine 泄漏、SQLite 文件增长、API 调用频率 | P1 | 全部 | P6-002 完成 | 内存不持续增长；goroutine 不泄漏；API 调用不超过限制 |
 
 ---
@@ -115,8 +115,7 @@
 
 | 编号 | 事项 | 来源 | 处理时机 | 说明 |
 |------|------|------|----------|------|
-| B-002 | 连接层测试基建 | P2-002/P2-003 评审遗留 | 连接层测试基建就绪时 | mock ZeroBot Ctx：补 onebot matcher 限流/敏感词回复分支单测；convert.go 纯函数（formatID/toMessage/toEvent）单测 |
-| B-003 | domain.Sender 发送接口 | P2-003 设计讨论 | Agent 回复需要时（P6-002 前） | domain 定义 Sender 接口，infra/onebot 用 CallActionWithContext 实现，main 注入；当前发送仅 onebot 内部 ctx.Send 固定文案 |
+| B-003 | 回复发送机制（已定方案 A） | P6-002 设计决策 | P6-002 实现时（签名改动随链路落地） | 选定「方案 A：回复上抛」：Handler 链签名 `(ctx,msg) error` → `(ctx,msg)(string,error)`，改动点 middleware.go 的 Handler 类型 + event.go 的 HandleMessage + message.go 的 Handle + onebot 闭包共 4 处；回复文本冒泡回 matcher 统一 `ctx.Send`（与限流/敏感词固定文案同一发送点，引用回复用 `message.ReplyWithMessage(原message_id, text)`，ZeroBot 不自动加 reply 段）；`domain.Sender` 暂不引入，仅当出现非响应式主动发送需求（异步插件、定时、P5 auto 后续发言）时再定义并 main 注入 |
 | B-004 | 限流注册表淘汰 | P2-003 实现注释 | 群数量增长后 | ratelimit 的 map[string]*rate.Limiter 只增不删，需按空闲时长淘汰 |
 | B-005 | Control.Mode 空值兜底 | config 重构 | P5-001 接入 control 服务时 | 消费方自理默认值：mode 为空 → "mention"，在 control service 侧兜底（main 目前未接 cfg.Control） |
 | B-006 | 配置模板双份同步 | config 重构 | 新增配置字段时 | pkg/config/config.default.yaml 与根 config.yaml 需手动同步（config.go 注释已标明） |

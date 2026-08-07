@@ -58,8 +58,8 @@ plumebot/
 
 - [架构设计文档](docs/architecture.md)
 - [开发阶段规划](docs/roadmap.md)
-- [开发执行规范](AGENTS.md)
+- [开发执行规范](CLAUDE.md)
 
 ## 当前阶段
 
-第一阶段：项目骨架。详见 [AGENTS.md](AGENTS.md) 和 [roadmap](docs/roadmap.md)。
+第一阶段：项目骨架。详见 [CLAUDE.md](CLAUDE.md) 和 [roadmap](docs/roadmap.md)。

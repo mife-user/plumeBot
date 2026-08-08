@@ -11,8 +11,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Go 版本 | 1.26.4 (go.mod: `go 1.26.4`) |
 | 模块名 | `plumebot` |
 | 入口 | `cmd/bot/main.go` |
-| 当前阶段 | 第三阶段：记忆系统（P3-002 画像加载与缓存待做） |
-| 任务台账 | `docs/roadmap.md`（阶段任务表 + 「待办与遗留事项」B-002~B-009） |
+| 当前阶段 | 第三阶段：记忆系统（P3-003 窗口压缩策略待做） |
+| 任务台账 | `docs/roadmap.md`（阶段任务表 + 「待办与遗留事项」B-003~B-011） |
 
 ```bash
 # 编译
@@ -24,7 +24,7 @@ go build ./...
 # 静态分析
 go vet ./...
 
-# 测试（已有多包单测：service/event、pkg/ahocorasick、pkg/config、infra/onebot、infra/ai、service/agent）
+# 测试（已有多包单测：service/event、service/memory、service/agent、infra/onebot、infra/ai、pkg/config、pkg/ahocorasick）
 go test ./...
 
 # 运行（连接 NapCat，需先配置 config.yaml 的 onebot.ws_url；缺失配置会自动写入默认模板）
@@ -88,8 +88,9 @@ P2-001 SQLite 存储层、P2-002 ZeroBot 连接层、P2-003 消息中间件链
 P2-004 eino Agent 接入（eino v0.8.13 + eino-ext openai，多模态消息、tool 机制、
 provider 注册中心；真实 LLM 冒烟见 internal/infra/ai/spike_test.go 的 TestSpikeLiveLLM，
 PLUMEBOT_TEST_LLM=1 门控）。
-已完成：P3-001 上下文窗口（ring buffer，20→100 轮 + 压缩触发信号 + 管线持久化接线）。
-进行中：P3-002 画像加载与缓存。
+已完成：P3-001 上下文窗口（ring buffer，20→100 轮 + 压缩触发信号 + 管线持久化接线）；
+已完成：P3-002 画像加载与缓存（窗口内成员/群画像按需加载 + 内存缓存 + 延迟 N 轮淘汰，非窗口人物不加载）。
+进行中：P3-003 窗口压缩策略。
 ```
 
 禁止提前实现（第三阶段禁令）：
@@ -97,7 +98,7 @@ PLUMEBOT_TEST_LLM=1 门控）。
 - 人格系统（P4-001）；
 - 插件系统（P4-002/003）；
 - 触发模式与状态规则（P5-001/002）；
-- 完整 Agent 对话闭环（群聊回复闭环属 P6-002；当前管线末端保持 `tailHandler` stub，Agent 能力由 eino 直调验证）
+- 完整 Agent 对话闭环（群聊回复闭环属 P6-002；当前管线末端 `tailHandler` 仅做持久化（窗口+SQLite），Agent 能力由 eino 直调验证）
 
 ## 3. 技术栈
 
@@ -139,21 +140,21 @@ plumebot/
 │   ├── domain/                     # 领域层：纯接口 + 实体 + 哨兵错误，零外部依赖
 │   │   ├── entity/                 #   公共实体（Message, Event, Profile...）
 │   │   ├── agent.go                #   Agent 接口（P2-004 由 infra/ai 实现）
-│   │   ├── memory.go               #   Memory 接口（stub）
+│   │   ├── memory.go               #   Memory 接口（P3-001 由 service/memory 实现）
 │   │   ├── persona.go              #   Persona 接口（stub）
 │   │   ├── plugin.go               #   Plugin 接口（stub）
 │   │   ├── storage.go              #   Storage 接口（P2-001 已实现）
 │   │   ├── control.go              #   Control 接口（stub）
 │   │   └── errors.go               #   哨兵错误 + 参数化错误（SensitiveWordError）
 │   ├── service/                    # 业务编排层，依赖 domain 接口
-│   │   ├── event/                  #   中间件链：日志 → 限流 → 敏感词 → tailHandler
+│   │   ├── event/                  #   中间件链：日志 → 限流 → 敏感词 → 持久化(tail)
 │   │   │   ├── event.go            #     EventService，HandleMessage 走链
-│   │   │   ├── middleware.go       #     Handler/Middleware 类型 + logMiddleware + tailHandler
+│   │   │   ├── middleware.go       #     Handler/Middleware 类型 + logMiddleware
 │   │   │   ├── ratelimit.go        #     令牌桶限流（按群/私聊按用户）
 │   │   │   ├── sensitive.go        #     敏感词中间件（AC 自动机）
 │   │   │   └── *_test.go           #     核心单测
-│   │   ├── agent/                  #   stub
-│   │   ├── memory/                 #   stub
+│   │   ├── agent/                  #   薄透传：GenerateReply → domain.Agent
+│   │   ├── memory/                 #   上下文窗口 + 画像缓存（P3-001/002 已实现）
 │   │   ├── persona/                #   stub
 │   │   ├── plugin/                 #   stub
 │   │   └── control/                #   stub
@@ -176,7 +177,7 @@ plumebot/
 ├── config.yaml                     # 本地配置文件（不入库，见 .gitignore；api_key 可用环境变量 PLUMEBOT_LLM_OPENAI_API_KEY 覆盖）
 ├── docs/
 │   ├── architecture.md             # 架构设计文档
-│   ├── roadmap.md                  # 任务台账（阶段表 + 遗留事项 B-002~B-009）
+│   ├── roadmap.md                  # 任务台账（阶段表 + 遗留事项 B-003~B-011）
 │   └── eino-notes.md               # eino v0.8.13 API 速查（P2-004 spike 产出，升级评估时对照）
 ├── CLAUDE.md                       # 本文件
 ├── README.md
@@ -287,7 +288,7 @@ domain 零依赖
 
 职责：
 
-- 消息中间件链编排：`日志 → 限流 → 敏感词 → tailHandler`；
+- 消息中间件链编排：`日志 → 限流 → 敏感词 → tail`，tail 持久化消息到窗口 + SQLite；
 - `HandleMessage` 走链，`HandleNotice` 暂为 stub。
 
 关键约定：
@@ -295,7 +296,8 @@ domain 零依赖
 - `HandleMessage(ctx, msg) error`，中间件命中返回哨兵错误（`domain.ErrRateLimited` / `domain.SensitiveWordError`）；
 - 限流：`golang.org/x/time/rate` 令牌桶，按群（私聊按用户）独立，超时返回 `ErrRateLimited`；
 - 敏感词：`pkg/ahocorasick` 匹配，空词表 = 不过滤；
-- 日志中间件记录 message_id/group_id/user_id/message_type/content，日志不重复（infra/onebot 不再打消息 Info）。
+- 日志中间件记录 message_id/group_id/user_id/message_type/content，日志不重复（infra/onebot 不再打消息 Info）；
+- 末端 tail 持久化消息（写入窗口 + SQLite），窗口满时打压缩触发信号（P3-003 消费）。
 
 ### 6.4 internal/handler/
 

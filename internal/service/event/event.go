@@ -10,7 +10,6 @@ import (
 	"plumebot/internal/service/persona"
 	"plumebot/internal/service/plugin"
 	"plumebot/pkg/config"
-	"plumebot/pkg/logger"
 )
 
 // EventService 是顶层事件调度编排，组合所有子 service。
@@ -49,17 +48,16 @@ func NewEventService(
 	return s
 }
 
-// tail 是消息管线的末端处理：持久化消息（写入上下文窗口 + SQLite），窗口满时打压缩触发信号。
-// Agent 回复闭环（P6-002）尚未接入，这里仅完成记忆持久化。
+// tail 是消息管线的末端处理：持久化消息（写入上下文窗口 + SQLite），
+// 窗口满时触发 P3-003 异步窗口压缩。
+// Agent 回复闭环（P6-002）尚未接入，这里仅完成记忆持久化与压缩触发。
 func (s *EventService) tail(ctx context.Context, msg entity.Message) error {
 	full, err := s.memory.PersistMessage(ctx, msg)
 	if err != nil {
 		return err
 	}
 	if full {
-		logger.Warn("窗口已达上限，触发压缩信号（P3-003）",
-			logger.S("group_id", msg.GroupID),
-		)
+		s.memory.Compress(ctx, msg)
 	}
 	return nil
 }

@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Go 版本 | 1.26.4 (go.mod: `go 1.26.4`) |
 | 模块名 | `plumebot` |
 | 入口 | `cmd/bot/main.go` |
-| 当前阶段 | 第三阶段：记忆系统（P3-003 窗口压缩策略待做） |
+| 当前阶段 | 第三阶段：记忆系统（P3-004 记忆更新闭环待做） |
 | 任务台账 | `docs/roadmap.md`（阶段任务表 + 「待办与遗留事项」B-003~B-011） |
 
 ```bash
@@ -90,7 +90,8 @@ provider 注册中心；真实 LLM 冒烟见 internal/infra/ai/spike_test.go 的
 PLUMEBOT_TEST_LLM=1 门控）。
 已完成：P3-001 上下文窗口（ring buffer，20→100 轮 + 压缩触发信号 + 管线持久化接线）；
 已完成：P3-002 画像加载与缓存（窗口内成员/群画像按需加载 + 内存缓存 + 延迟 N 轮淘汰，非窗口人物不加载）。
-进行中：P3-003 窗口压缩策略。
+已完成：P3-003 窗口压缩策略（一级压缩 LLM 摘要 + 二级融合/淘汰 + 摘要热链内存 + 长程归档 SQLite 重启回灌）。
+进行中：P3-004 记忆更新闭环。
 ```
 
 禁止提前实现（第三阶段禁令）：
@@ -154,7 +155,7 @@ plumebot/
 │   │   │   ├── sensitive.go        #     敏感词中间件（AC 自动机）
 │   │   │   └── *_test.go           #     核心单测
 │   │   ├── agent/                  #   薄透传：GenerateReply → domain.Agent
-│   │   ├── memory/                 #   上下文窗口 + 画像缓存（P3-001/002 已实现）
+│   │   ├── memory/                 #   上下文窗口 + 画像缓存 + 窗口压缩（P3-001/002/003 已实现）
 │   │   ├── persona/                #   stub
 │   │   ├── plugin/                 #   stub
 │   │   └── control/                #   stub
@@ -163,8 +164,8 @@ plumebot/
 │   │   └── notice.go               #   通知事件 → 规则处理（stub）
 │   └── infra/                      # 基础设施，实现 domain 接口
 │       ├── onebot/                 #   ZeroBot 封装（已接入：matcher 分发 + 固定文案回复）
-│       ├── ai/                     #   eino Agent 实现（P2-004 已实装：provider 注册中心 + 多模态转换 + tool 机制）
-│       ├── sqlite/                 #   SQLite 存储实现（已接入：P2-001，含 migrations）
+│       ├── ai/                     #   eino Agent + 摘要器实现（P2-004 provider 注册中心 + 多模态转换 + tool 机制；P3-003 Summarizer 裸模型单次调用）
+│       ├── sqlite/                 #   SQLite 存储实现（已接入：P2-001，9 张表 + migrations）
 │       │   └── migrations/        #     版本化 DDL 迁移文件
 │       ├── plugin_so/              #   plugin.Open() 实现（stub）
 │       └── plugin_exe/             #   exec 子进程实现（stub）
@@ -297,7 +298,7 @@ domain 零依赖
 - 限流：`golang.org/x/time/rate` 令牌桶，按群（私聊按用户）独立，超时返回 `ErrRateLimited`；
 - 敏感词：`pkg/ahocorasick` 匹配，空词表 = 不过滤；
 - 日志中间件记录 message_id/group_id/user_id/message_type/content，日志不重复（infra/onebot 不再打消息 Info）；
-- 末端 tail 持久化消息（写入窗口 + SQLite），窗口满时打压缩触发信号（P3-003 消费）。
+- 末端 tail 持久化消息（写入窗口 + SQLite），窗口满时触发 P3-003 异步窗口压缩（经 memory.Compress，防重入 + 失败冷却）。
 
 ### 6.4 internal/handler/
 

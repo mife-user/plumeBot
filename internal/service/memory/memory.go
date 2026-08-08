@@ -11,16 +11,23 @@ import (
 // MemoryService
 // ---------------------------------------------------------------------------
 
-// MemoryService 负责上下文窗口维护与画像缓存编排。
+// MemoryService 负责上下文窗口维护、画像缓存编排与窗口压缩（P3-003）。
 type MemoryService struct {
-	memory   domain.Memory
-	store    domain.Storage
-	profiles *ProfileCache
+	memory     domain.Memory
+	store      domain.Storage
+	profiles   *ProfileCache
+	compressor *Compressor
 }
 
-// NewMemoryService 创建 MemoryService，注入 domain.Memory（窗口实现）和 domain.Storage。
-func NewMemoryService(memory domain.Memory, store domain.Storage) *MemoryService {
-	return &MemoryService{memory: memory, store: store, profiles: NewProfileCache(store)}
+// NewMemoryService 创建 MemoryService，注入 domain.Memory（窗口实现）、domain.Storage
+// 与 domain.Summarizer（窗口压缩的 LLM 摘要器）。
+func NewMemoryService(memory domain.Memory, store domain.Storage, summarizer domain.Summarizer) *MemoryService {
+	return &MemoryService{
+		memory:     memory,
+		store:      store,
+		profiles:   NewProfileCache(store),
+		compressor: NewCompressor(memory, summarizer, NewSummaryStore(store)),
+	}
 }
 
 // PersistMessage 持久化一条消息：写入上下文窗口（内存 ring buffer）+ SQLite messages 表，
@@ -51,6 +58,17 @@ func (s *MemoryService) GetMemberProfile(groupID, userID string) (*entity.Member
 // GetGroupProfile 返回缓存的群画像。
 func (s *MemoryService) GetGroupProfile(groupID string) (*entity.GroupProfile, bool) {
 	return s.profiles.GetGroupProfile(groupID)
+}
+
+// Compress 触发一次该会话的异步窗口压缩（窗口满时由事件层消费 full 信号调用）。
+// 具体流程见 Compressor：一级压缩 → 热链 → 二级融合/淘汰 → 裁剪窗口。
+func (s *MemoryService) Compress(ctx context.Context, msg entity.Message) {
+	s.compressor.Trigger(ctx, sessionKey(msg))
+}
+
+// GetSummaries 返回会话摘要热链（P6-001 拼 prompt 时拼接，位于人格之后、窗口之前），旧→新。
+func (s *MemoryService) GetSummaries(ctx context.Context, chatID string) []entity.Summary {
+	return s.compressor.summaries.GetAll(ctx, chatID)
 }
 
 // BuildContext 组装上下文窗口内容。第一阶段返回空。

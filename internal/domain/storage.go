@@ -12,6 +12,12 @@ type Storage interface {
 	SaveMessage(ctx context.Context, msg entity.Message) error
 	GetMessages(ctx context.Context, groupID string, limit int, offset int) ([]entity.Message, error)
 
+	// ── conversation_summary ──
+	// SaveSummary 归档一条摘要（(chat_id, seq) 冲突时覆盖，幂等）。
+	SaveSummary(ctx context.Context, summary entity.Summary) error
+	// ListSummaries 返回指定会话最新的 limit 条归档摘要（时间序）。
+	ListSummaries(ctx context.Context, chatID string, limit int) ([]entity.Summary, error)
+
 	// ── group_profile ──
 	UpsertGroupProfile(ctx context.Context, profile entity.GroupProfile) error
 	GetGroupProfile(ctx context.Context, groupID string) (*entity.GroupProfile, error)

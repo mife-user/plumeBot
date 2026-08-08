@@ -30,6 +30,8 @@ type fakeStorage struct {
 	groupProf  map[string]*entity.GroupProfile
 	memberGets int // 个人画像查询次数（断言不重复查库）
 	groupGets  int // 群画像查询次数
+
+	archived []entity.Summary // SaveSummary 落库的归档摘要
 }
 
 func (f *fakeStorage) SaveMessage(_ context.Context, msg entity.Message) error {
@@ -53,9 +55,57 @@ func (f *fakeStorage) GetGroupProfile(_ context.Context, groupID string) (*entit
 	return nil, domain.ErrNotFound
 }
 
+func (f *fakeStorage) SaveSummary(_ context.Context, sum entity.Summary) error {
+	f.archived = append(f.archived, sum)
+	return nil
+}
+
+func (f *fakeStorage) ListSummaries(_ context.Context, chatID string, limit int) ([]entity.Summary, error) {
+	var out []entity.Summary
+	for i := len(f.archived) - 1; i >= 0; i-- {
+		if f.archived[i].ChatID == chatID {
+			out = append(out, f.archived[i])
+			if len(out) == limit {
+				break
+			}
+		}
+	}
+	// 反转回正序（旧→新），与 sqlite 实现一致。
+	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+		out[i], out[j] = out[j], out[i]
+	}
+	return out, nil
+}
+
+// fakeSummarizer 返回预设输出的假摘要器；results 耗尽后返回默认 JSON。
+// errAt 指定在第 N 次调用时返回 err；errAt=0 时若设置了 err，则每次调用都返回 err。
+type fakeSummarizer struct {
+	results []string // 依次返回的模型输出
+	calls   int
+	err     error
+	errAt   int // 第 N 次调用时返回 err（0 = 不按次数触发）
+}
+
+func (f *fakeSummarizer) Summarize(_ context.Context, _ string, _ string) (string, error) {
+	f.calls++
+	if f.errAt > 0 {
+		if f.calls == f.errAt {
+			return "", f.err
+		}
+	} else if f.err != nil {
+		return "", f.err
+	}
+	if len(f.results) > 0 {
+		r := f.results[0]
+		f.results = f.results[1:]
+		return r, nil
+	}
+	return `{"summary":"s","keywords":["k"],"decisions":["d"]}`, nil
+}
+
 func TestPersistMessageWritesWindowAndStorage(t *testing.T) {
 	store := &fakeStorage{}
-	svc := NewMemoryService(NewWindow(), store)
+	svc := NewMemoryService(NewWindow(), store, &fakeSummarizer{})
 	msg := groupMsg("g1", "hi")
 
 	full, err := svc.PersistMessage(context.Background(), msg)
@@ -80,7 +130,7 @@ func TestPersistMessageWritesWindowAndStorage(t *testing.T) {
 
 func TestPersistMessageSignalsCompressionAtCap(t *testing.T) {
 	store := &fakeStorage{}
-	svc := NewMemoryService(NewWindow(), store)
+	svc := NewMemoryService(NewWindow(), store, &fakeSummarizer{})
 	for i := 0; i < WindowCap; i++ {
 		full, err := svc.PersistMessage(context.Background(), groupMsg("g1", "m"))
 		if err != nil {
@@ -100,7 +150,7 @@ func TestPersistMessageLoadsMemberProfile(t *testing.T) {
 	store.memberProf = map[string]*entity.MemberProfile{
 		"g1|u1": {GroupID: "g1", UserID: "u1", Activity: 0.9},
 	}
-	svc := NewMemoryService(NewWindow(), store)
+	svc := NewMemoryService(NewWindow(), store, &fakeSummarizer{})
 	msg := entity.Message{GroupID: "g1", UserID: "u1", MessageType: "group", Content: "hi"}
 
 	if _, err := svc.PersistMessage(context.Background(), msg); err != nil {

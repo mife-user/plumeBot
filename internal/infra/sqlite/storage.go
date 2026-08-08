@@ -3,11 +3,13 @@ package sqlite
 import (
 	"context"
 	"database/sql"
-	_ "embed"
+	"embed"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	_ "modernc.org/sqlite"
@@ -16,10 +18,10 @@ import (
 	"plumebot/internal/domain/entity"
 )
 
-// schemaSQL 内嵌建表 DDL，来自 migrations/ 目录下的版本化迁移文件。
+// schemaFS 内嵌 migrations/ 目录下的全部版本化迁移文件（文件名序执行）。
 //
-//go:embed migrations/001_initial_schema.sql
-var schemaSQL string
+//go:embed migrations/*.sql
+var schemaFS embed.FS
 
 // 编译期校验：Storage 实现 domain.Storage。
 var _ domain.Storage = (*Storage)(nil)
@@ -68,9 +70,24 @@ func (s *Storage) Close() error {
 
 // ──────────────────────────── migration / seed ────────────────────────────
 
-// migrate 执行嵌入 schema.sql 中的全部 DDL 语句。
+// migrate 执行嵌入的全部迁移文件 DDL（按文件名序拼接后逐条执行）。
 func (s *Storage) migrate(ctx context.Context) error {
-	for _, stmt := range strings.Split(schemaSQL, ";") {
+	names, err := fs.Glob(schemaFS, "migrations/*.sql")
+	if err != nil {
+		return fmt.Errorf("列举迁移文件失败: %w", err)
+	}
+	sort.Strings(names)
+
+	var sb strings.Builder
+	for _, name := range names {
+		b, err := schemaFS.ReadFile(name)
+		if err != nil {
+			return fmt.Errorf("读取迁移文件 %s 失败: %w", name, err)
+		}
+		sb.Write(b)
+		sb.WriteString(";")
+	}
+	for _, stmt := range strings.Split(sb.String(), ";") {
 		stmt = strings.TrimSpace(stmt)
 		if stmt == "" {
 			continue
@@ -121,6 +138,47 @@ func (s *Storage) GetMessages(ctx context.Context, groupID string, limit, offset
 		out = append(out, m)
 	}
 	return out, rows.Err()
+}
+
+// ──────────────────────────── conversation_summary ────────────────────────────
+
+// SaveSummary 归档一条摘要到 conversation_summary 表。
+// (chat_id, seq) 冲突时覆盖 —— 回灌的旧摘要再次被淘汰时重复归档是幂等的。
+func (s *Storage) SaveSummary(ctx context.Context, sum entity.Summary) error {
+	keywords, _ := json.Marshal(sum.Keywords)
+	decisions, _ := json.Marshal(sum.Decisions)
+	_, err := s.db.ExecContext(ctx, sqlSaveSummary,
+		sum.ChatID, sum.Seq, sum.Text, string(keywords), string(decisions), sum.CreatedAt)
+	return err
+}
+
+// ListSummaries 返回指定会话最新的 limit 条归档摘要（按 seq 时间正序）。
+func (s *Storage) ListSummaries(ctx context.Context, chatID string, limit int) ([]entity.Summary, error) {
+	rows, err := s.db.QueryContext(ctx, sqlListSummaries, chatID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// SQL 按 seq 倒序取最新 limit 条，Go 侧反转回正序（旧→新）。
+	var out []entity.Summary
+	for rows.Next() {
+		var sum entity.Summary
+		var keywords, decisions string
+		if err := rows.Scan(&sum.ChatID, &sum.Seq, &sum.Text, &keywords, &decisions, &sum.CreatedAt); err != nil {
+			return nil, err
+		}
+		json.Unmarshal([]byte(keywords), &sum.Keywords)
+		json.Unmarshal([]byte(decisions), &sum.Decisions)
+		out = append(out, sum)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+		out[i], out[j] = out[j], out[i]
+	}
+	return out, nil
 }
 
 // ──────────────────────────── group_profile ────────────────────────────

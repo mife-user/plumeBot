@@ -63,3 +63,31 @@ func (w *Window) GetWindow(_ context.Context, sessionID string) ([]entity.Messag
 	copy(out, buf)
 	return out, nil
 }
+
+// RemoveByIDs 从会话窗口精确移除指定 MessageID 的消息（P3-003 压缩批次归档后调用），
+// 返回实际移除数量。并发追加的新消息（ID 不在批次内）不受影响。
+func (w *Window) RemoveByIDs(_ context.Context, sessionID string, ids []string) (int, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	idSet := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		idSet[id] = struct{}{}
+	}
+
+	buf := w.data[sessionID]
+	kept := buf[:0]
+	removed := 0
+	for _, m := range buf {
+		if _, ok := idSet[m.MessageID]; ok {
+			removed++
+			continue
+		}
+		kept = append(kept, m)
+	}
+	w.data[sessionID] = kept
+	return removed, nil
+}

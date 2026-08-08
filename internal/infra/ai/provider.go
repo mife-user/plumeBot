@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
+	"github.com/cloudwego/eino/components/model"
 
 	"plumebot/internal/domain"
 	"plumebot/pkg/config"
@@ -71,41 +72,9 @@ func registeredProviders(m map[string]Factory) string {
 // system_prompt 空 → DefaultSystemPrompt（均经 Instruction/元数据注入 EinoAgent）。
 func NewOpenAIFactory(tr *ToolsRegistry) Factory {
 	return func(ctx context.Context, cfg config.Config) (domain.Agent, error) {
-		o := cfg.LLM.OpenAI
-
-		baseURL := o.BaseURL
-		if baseURL == "" {
-			baseURL = config.DefaultOpenAIBaseURL
-		}
-		if o.Model == "" {
-			return nil, errors.New("llm.openai.model 未配置（空值不可猜测，请在 config.yaml 中填写模型名）")
-		}
-		timeout := cfg.LLM.TimeoutSeconds
-		if timeout <= 0 {
-			timeout = config.DefaultLLMTimeoutSeconds
-		}
-
-		var temperature *float32
-		if o.Temperature != nil {
-			t := float32(*o.Temperature)
-			temperature = &t
-		}
-		var maxTokens *int
-		if o.MaxTokens > 0 {
-			mt := o.MaxTokens
-			maxTokens = &mt
-		}
-
-		cm, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
-			BaseURL:             baseURL,
-			APIKey:              o.APIKey,
-			Model:               o.Model,
-			Timeout:             time.Duration(timeout) * time.Second,
-			Temperature:         temperature,
-			MaxCompletionTokens: maxTokens,
-		})
+		cm, err := buildChatModel(ctx, cfg)
 		if err != nil {
-			return nil, fmt.Errorf("构造 openai ChatModel 失败: %w", err)
+			return nil, err
 		}
 
 		tools, err := tr.EnabledTools(cfg.Tools.Enabled)
@@ -125,4 +94,48 @@ func NewOpenAIFactory(tr *ToolsRegistry) Factory {
 		}
 		return NewEinoAgent(ctx, cm, tools, acfg)
 	}
+}
+
+// buildChatModel 依据 LLM 配置构造 OpenAI 兼容 ChatModel（供对话 Agent 与摘要器复用）。
+// 兜底语义：base_url 空 → DefaultOpenAIBaseURL；model 空 → 报错（空值不可猜测）；
+// timeout_seconds ≤0 → DefaultLLMTimeoutSeconds；api_key 空透传；
+// Temperature 转 *float32；MaxTokens >0 → MaxCompletionTokens。
+func buildChatModel(ctx context.Context, cfg config.Config) (model.BaseChatModel, error) {
+	o := cfg.LLM.OpenAI
+
+	baseURL := o.BaseURL
+	if baseURL == "" {
+		baseURL = config.DefaultOpenAIBaseURL
+	}
+	if o.Model == "" {
+		return nil, errors.New("llm.openai.model 未配置（空值不可猜测，请在 config.yaml 中填写模型名）")
+	}
+	timeout := cfg.LLM.TimeoutSeconds
+	if timeout <= 0 {
+		timeout = config.DefaultLLMTimeoutSeconds
+	}
+
+	var temperature *float32
+	if o.Temperature != nil {
+		t := float32(*o.Temperature)
+		temperature = &t
+	}
+	var maxTokens *int
+	if o.MaxTokens > 0 {
+		mt := o.MaxTokens
+		maxTokens = &mt
+	}
+
+	cm, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
+		BaseURL:             baseURL,
+		APIKey:              o.APIKey,
+		Model:               o.Model,
+		Timeout:             time.Duration(timeout) * time.Second,
+		Temperature:         temperature,
+		MaxCompletionTokens: maxTokens,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("构造 openai ChatModel 失败: %w", err)
+	}
+	return cm, nil
 }

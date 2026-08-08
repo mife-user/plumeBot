@@ -15,6 +15,16 @@ const (
 	sqlGetMessages = `SELECT message_id, group_id, user_id, content, timestamp, message_type
  FROM messages WHERE group_id = ? ORDER BY timestamp DESC LIMIT ? OFFSET ?`
 
+	// ── conversation_summary ──
+
+	sqlSaveSummary = `INSERT INTO conversation_summary (chat_id, seq, text, keywords, decisions, created_at)
+ VALUES (?, ?, ?, ?, ?, ?)
+ ON CONFLICT(chat_id, seq) DO UPDATE SET
+ text=excluded.text, keywords=excluded.keywords, decisions=excluded.decisions, created_at=excluded.created_at`
+
+	sqlListSummaries = `SELECT chat_id, seq, text, keywords, decisions, created_at
+ FROM conversation_summary WHERE chat_id = ? ORDER BY seq DESC LIMIT ?`
+
 	// ── group_profile ──
 
 	sqlUpsertGroupProfile = `INSERT INTO group_profile (group_id, culture, topics, active_hours, rules, atmosphere)

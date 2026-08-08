@@ -106,3 +106,43 @@ func TestWindowGetWindowReturnsCopy(t *testing.T) {
 		t.Error("GetWindow 应返回副本，外部修改不应影响窗口内部数据")
 	}
 }
+
+func TestWindowRemoveByIDs(t *testing.T) {
+	w := NewWindow()
+	for i := 1; i <= 5; i++ {
+		m := groupMsg("g1", "m")
+		m.MessageID = strconv.Itoa(i)
+		_, _ = w.AppendMessage(context.Background(), m)
+	}
+
+	removed, err := w.RemoveByIDs(context.Background(), "g1", []string{"2", "4"})
+	if err != nil {
+		t.Fatalf("移除失败: %v", err)
+	}
+	if removed != 2 {
+		t.Errorf("应移除 2 条, 实际 %d", removed)
+	}
+	got, _ := w.GetWindow(context.Background(), "g1")
+	if len(got) != 3 || got[0].MessageID != "1" || got[1].MessageID != "3" || got[2].MessageID != "5" {
+		t.Errorf("窗口应保留 1/3/5, 实际: %+v", got)
+	}
+}
+
+func TestWindowRemoveByIDsPreservesConcurrentAdds(t *testing.T) {
+	w := NewWindow()
+	// 批次 1~4 被压缩移除，5~6 是压缩期间并发追加的新消息（ID 不在批次内），应保留。
+	for i := 1; i <= 6; i++ {
+		m := groupMsg("g1", "m")
+		m.MessageID = strconv.Itoa(i)
+		_, _ = w.AppendMessage(context.Background(), m)
+	}
+
+	_, err := w.RemoveByIDs(context.Background(), "g1", []string{"1", "2", "3", "4"})
+	if err != nil {
+		t.Fatalf("移除失败: %v", err)
+	}
+	got, _ := w.GetWindow(context.Background(), "g1")
+	if len(got) != 2 || got[0].MessageID != "5" || got[1].MessageID != "6" {
+		t.Errorf("压缩期追加的新消息不应被移除, 实际: %+v", got)
+	}
+}

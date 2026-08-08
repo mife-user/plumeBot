@@ -45,6 +45,11 @@ func main() {
 	if err != nil {
 		logger.Fatal("初始化 LLM Agent 失败", logger.Err(err))
 	}
+	// 窗口压缩摘要器：与对话 Agent 分离（无人设、无工具，单次模型调用）。
+	summarizerInfra, err := ai.NewSummarizer(ctx, *cfg)
+	if err != nil {
+		logger.Fatal("初始化摘要器失败", logger.Err(err))
+	}
 	storageInfra, err := sqlite.Open("data")
 	if err != nil {
 		logger.Fatal("打开 SQLite 失败", logger.Err(err))
@@ -55,7 +60,7 @@ func main() {
 
 	// 3. 注入 service
 	agentSvc := agent.NewAgentService(agentInfra)
-	memorySvc := memory.NewMemoryService(memory.NewWindow(), storageInfra)
+	memorySvc := memory.NewMemoryService(memory.NewWindow(), storageInfra, summarizerInfra)
 	personaSvc := persona.NewPersonaService(persona.Nop())
 	pluginSvc := plugin.NewPluginService(soPlugin, exePlugin)
 	controlSvc := control.NewControlService(control.Nop())
